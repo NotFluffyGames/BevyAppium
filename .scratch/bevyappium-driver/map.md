@@ -24,6 +24,7 @@ A spec, ready for `/to-spec`, for a desktop-first Appium 2 driver plus Bevy plug
 ## Decisions so far
 
 - [What must an Appium 2 driver implement?](issues/02-research-appium2-driver-api.md): BaseDriver subclass with ~7 required commands, custom commands via `executeMethodMap`, no proxying; target Appium major still to choose (latest is 4.0.0).
+- [How do input injection and screenshots work in Bevy?](issues/03-research-bevy-input-screenshot.md): inject Messages plus the `WindowEvent` wrapper and window cursor; screenshots via `Screenshot` + `ScreenshotCaptured` (async); Bevy 0.20.1 is the pin candidate.
 
 ## Not yet specified
 
