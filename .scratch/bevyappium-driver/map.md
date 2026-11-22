@@ -23,7 +23,7 @@ A spec, ready for `/to-spec`, for a desktop-first Appium 2 driver plus Bevy plug
 
 ## Decisions so far
 
-(none yet)
+- [What must an Appium 2 driver implement?](issues/02-research-appium2-driver-api.md): BaseDriver subclass with ~7 required commands, custom commands via `executeMethodMap`, no proxying; target Appium major still to choose (latest is 4.0.0).
 
 ## Not yet specified
 
