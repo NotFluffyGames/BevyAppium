@@ -1,6 +1,6 @@
 ---
 label: wayfinder:prototype
-assignee: 
+assignee: claude
 blocked_by: []
 status: open
 ---
