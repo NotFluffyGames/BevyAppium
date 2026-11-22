@@ -1,0 +1,9 @@
+[package]
+name = "proto_agent"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.20.1", features = ["bevy_remote", "x11", "default_font", "png"] }
+serde = "1.0.229"
+serde_json = "1.0.154"
