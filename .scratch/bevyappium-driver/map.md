@@ -10,7 +10,7 @@ A spec, ready for `/to-spec`, for a desktop-first Appium 2 driver plus Bevy plug
 ## Notes
 
 - Domain language lives in `/CONTEXT.md` (Driver, Agent, Session, Element). Use `grilling` + `domain-modeling` for HITL tickets.
-- Driver: real Appium 2 driver, TypeScript/Node; CLI is a subcommand of the npm package. Agent: Rust Bevy plugin in-process. Monorepo: `driver/` (npm), `agent/` (cargo).
+- Driver: real Appium driver targeting Appium 4 (ESM, Node >= 22.22.2), TypeScript; CLI is a subcommand of the npm package. Agent: Rust Bevy plugin in-process. Monorepo: `driver/` (npm), `agent/` (cargo).
 - Protocol: build on `bevy_remote` (BRP) with custom methods on top (research 01). Must work over a forwarded TCP port.
 - Driver launches the game and owns its lifetime; attach mode (Agent port given) is a cheap extra.
 - Elements are any entity (UI or world); locators by `Name`, marker or component type; UI nodes get click/text helpers.

@@ -1,6 +1,6 @@
 ---
 label: wayfinder:grilling
-assignee: 
+assignee: claude
 blocked_by: []
 status: open
 ---
