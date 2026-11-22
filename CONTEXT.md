@@ -16,6 +16,12 @@ One test client's lifetime against one running game, from launch to quit.
 **Element**:
 Something a test can locate and act on: a Bevy entity (UI node or world entity) as seen through the Driver.
 
+**Element id**:
+The identifier a test client holds for an **Element**: the entity's index and generation together, so it goes stale when the entity despawns.
+
+**Locator**:
+How a test finds **Elements**: by `Name`, or by component type.
+
 ## Relationships
 
 - A **Session** has exactly one **Driver** and one **Agent**.

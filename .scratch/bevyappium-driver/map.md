@@ -26,9 +26,12 @@ A spec, ready for `/to-spec`, for a desktop-first Appium 2 driver plus Bevy plug
 - [What must an Appium 2 driver implement?](issues/02-research-appium2-driver-api.md): BaseDriver subclass with ~7 required commands, custom commands via `executeMethodMap`, no proxying; target Appium major still to choose (latest is 4.0.0).
 - [How do input injection and screenshots work in Bevy?](issues/03-research-bevy-input-screenshot.md): inject Messages plus the `WindowEvent` wrapper and window cursor; screenshots via `Screenshot` + `ScreenshotCaptured` (async); Bevy 0.20.1 is the pin candidate.
 - [Is BRP sufficient for the Agent?](issues/01-research-brp-sufficiency.md): good base, not sufficient alone. Build on BRP plus custom methods (wait-frames, find, input sequencing, PNG screenshot); compile-out via optional dep works. Bevy 0.20.1.
+- [What is the Element model?](issues/05-grilling-element-model.md): id = entity bits (stale on despawn); locators `~`/`id` by `Name`, `class name` by component; attributes by reflect path; click via layout centre or camera projection; XPath deferred.
 
 ## Not yet specified
 
+- XPath locator support (needs hierarchy XML plus an XPath engine).
+- Click occlusion detection.
 - Virtual-time pause/stepping, if tests prove flaky.
 - Test-authoring story and CLI shape.
 - The example game used for tests and the stripping check.
