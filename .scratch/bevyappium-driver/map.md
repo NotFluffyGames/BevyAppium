@@ -3,7 +3,7 @@ label: wayfinder:map
 ---
 # Map: BevyAppium driver
 
-Status: no open tickets. Way is clear; hand off to `/to-spec`.
+Status: no open tickets. Way is clear. Spec published: [spec.md](spec.md) (`ready-for-agent`).
 
 ## Destination
 
