@@ -1,7 +1,7 @@
 ---
 label: wayfinder:grilling
 assignee: 
-blocked_by: [01,02]
+blocked_by: []
 status: open
 ---
 # What is the Element model?

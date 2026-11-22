@@ -1,7 +1,7 @@
 ---
 label: wayfinder:prototype
 assignee: 
-blocked_by: [01,02,03]
+blocked_by: []
 status: open
 ---
 # Does a thin Driver↔Agent round trip feel right?

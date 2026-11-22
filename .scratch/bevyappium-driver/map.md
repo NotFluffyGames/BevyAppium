@@ -11,7 +11,7 @@ A spec, ready for `/to-spec`, for a desktop-first Appium 2 driver plus Bevy plug
 
 - Domain language lives in `/CONTEXT.md` (Driver, Agent, Session, Element). Use `grilling` + `domain-modeling` for HITL tickets.
 - Driver: real Appium 2 driver, TypeScript/Node; CLI is a subcommand of the npm package. Agent: Rust Bevy plugin in-process. Monorepo: `driver/` (npm), `agent/` (cargo).
-- Protocol: build on `bevy_remote` (BRP) if research shows it is sufficient, else custom. Must work over a forwarded TCP port.
+- Protocol: build on `bevy_remote` (BRP) with custom methods on top (research 01). Must work over a forwarded TCP port.
 - Driver launches the game and owns its lifetime; attach mode (Agent port given) is a cheap extra.
 - Elements are any entity (UI or world); locators by `Name`, marker or component type; UI nodes get click/text helpers.
 - Input is injected as Bevy input events inside the game.
@@ -25,6 +25,7 @@ A spec, ready for `/to-spec`, for a desktop-first Appium 2 driver plus Bevy plug
 
 - [What must an Appium 2 driver implement?](issues/02-research-appium2-driver-api.md): BaseDriver subclass with ~7 required commands, custom commands via `executeMethodMap`, no proxying; target Appium major still to choose (latest is 4.0.0).
 - [How do input injection and screenshots work in Bevy?](issues/03-research-bevy-input-screenshot.md): inject Messages plus the `WindowEvent` wrapper and window cursor; screenshots via `Screenshot` + `ScreenshotCaptured` (async); Bevy 0.20.1 is the pin candidate.
+- [Is BRP sufficient for the Agent?](issues/01-research-brp-sufficiency.md): good base, not sufficient alone. Build on BRP plus custom methods (wait-frames, find, input sequencing, PNG screenshot); compile-out via optional dep works. Bevy 0.20.1.
 
 ## Not yet specified
 
