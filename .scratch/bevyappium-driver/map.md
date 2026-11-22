@@ -3,6 +3,8 @@ label: wayfinder:map
 ---
 # Map: BevyAppium driver
 
+Status: no open tickets. Way is clear; hand off to `/to-spec`.
+
 ## Destination
 
 A spec, ready for `/to-spec`, for a desktop-first Appium 2 driver plus Bevy plugin ("Agent") that runs automated tests against Bevy games. Personal-use package.
@@ -27,6 +29,7 @@ A spec, ready for `/to-spec`, for a desktop-first Appium 2 driver plus Bevy plug
 - [How do input injection and screenshots work in Bevy?](issues/03-research-bevy-input-screenshot.md): inject Messages plus the `WindowEvent` wrapper and window cursor; screenshots via `Screenshot` + `ScreenshotCaptured` (async); Bevy 0.20.1 is the pin candidate.
 - [Is BRP sufficient for the Agent?](issues/01-research-brp-sufficiency.md): good base, not sufficient alone. Build on BRP plus custom methods (wait-frames, find, input sequencing, PNG screenshot); compile-out via optional dep works. Bevy 0.20.1.
 - [What is the Element model?](issues/05-grilling-element-model.md): id = entity bits (stale on despawn); locators `~`/`id` by `Name`, `class name` by component; attributes by reflect path; click via layout centre or camera projection; XPath deferred.
+- [Does a thin Driver↔Agent round trip feel right?](issues/04-prototype-roundtrip-skeleton.md): yes. Reply-after-frame via one watching BRP method called without `+watch`; clicks via bare messages + `WindowEvent` wrapper + window cursor, one step per frame; prototype on `prototype/roundtrip`.
 
 ## Not yet specified
 
