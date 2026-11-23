@@ -23,6 +23,7 @@ function throwAgentError(r: StepResult): void {
     case 'stale element reference': throw new errors.StaleElementReferenceError(e.message);
     case 'no such element': throw new errors.NoSuchElementError(e.message);
     case 'element not interactable': throw new errors.ElementNotInteractableError(e.message);
+    case 'unable to capture screen': throw new errors.UnableToCaptureScreen(e.message);
     case 'invalid selector': throw new errors.InvalidSelectorError(e.message);
     default: throw new errors.UnknownError(`${e.code}: ${e.message}`);
   }
@@ -98,6 +99,18 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
 
   async elementEnabled(elementId: string): Promise<boolean> {
     return (await this.getAttribute('enabled', elementId)) === 'true';
+  }
+
+  async getScreenshot(): Promise<string> {
+    const [r] = await this.client().run([{ screenshot: true }]);
+    throwAgentError(r);
+    return r.png as string;
+  }
+
+  async getPageSource(): Promise<string> {
+    const [r] = await this.client().run([{ source: true }]);
+    throwAgentError(r);
+    return r.xml as string;
   }
 
   /** WebDriver "Execute Script": only `bevy: ...` extension commands are supported. */

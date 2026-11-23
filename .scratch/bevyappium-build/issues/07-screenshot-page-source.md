@@ -1,6 +1,6 @@
 ---
 label: ready-for-agent
-status: open
+status: done
 spec: ../../bevyappium-driver/spec.md
 ---
 # 07: Screenshot and page source
@@ -11,7 +11,7 @@ spec: ../../bevyappium-driver/spec.md
 
 **Status:** ready-for-agent
 
-- [ ] Standard WebDriver screenshot returns a base64 PNG of the primary window
-- [ ] Works headless under a virtual display with software rendering
-- [ ] The Agent waits the right number of frames for the async capture and does not time out or return a stale frame
-- [ ] Page source returns the entity hierarchy as XML (from parent-child relationships) including names and component types
+- [x] Standard WebDriver screenshot returns a base64 PNG of the primary window
+- [x] Works headless under a virtual display with software rendering
+- [x] The Agent waits the right number of frames for the async capture and does not time out or return a stale frame
+- [x] Page source returns the entity hierarchy as XML (from parent-child relationships) including names and component types

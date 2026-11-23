@@ -4,6 +4,7 @@ use bevy::input::ButtonState;
 use bevy::input::mouse::MouseButtonInput;
 use bevy::prelude::*;
 use bevy::reflect::GetPath;
+use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::window::{CursorMoved, PrimaryWindow, WindowEvent};
 use bevy::remote::{BrpError, BrpResult, RemotePlugin, http::RemoteHttpPlugin};
 use serde_json::{Value, json};
@@ -39,6 +40,8 @@ struct Jobs {
     /// Every id ever registered. BRP may call the handler again after the reply was
     /// sent; without this a finished script would be registered, and run, a second time.
     seen: std::collections::HashSet<u64>,
+    /// Finished screenshots (base64 PNG) by job id, filled by the capture observer.
+    shots: HashMap<u64, Result<String, String>>,
 }
 
 fn run_method(In(params): In<Option<Value>>, mut jobs: ResMut<Jobs>) -> BrpResult<Option<Value>> {
@@ -63,7 +66,7 @@ fn drive_jobs(world: &mut World) {
                 jobs.done.insert(id, json!({ "results": job.out }));
                 continue;
             };
-            if run_step(world, &mut job, step) {
+            if run_step(world, &mut jobs, id, &mut job, step) {
                 job.step += 1;
             }
             jobs.running.insert(id, (steps, job));
@@ -98,7 +101,7 @@ fn find_by_component(world: &World, path: &str) -> Vec<Entity> {
 }
 
 /// Run one step. Returns true when the step is finished (false: run again next frame).
-fn run_step(world: &mut World, job: &mut Job, step: &Value) -> bool {
+fn run_step(world: &mut World, jobs: &mut Jobs, id: u64, job: &mut Job, step: &Value) -> bool {
     if let Some(f) = step.get("find") {
         let (using, value) = (f["using"].as_str().unwrap_or(""), f["value"].as_str().unwrap_or(""));
         let found = match using {
@@ -119,6 +122,10 @@ fn run_step(world: &mut World, job: &mut Job, step: &Value) -> bool {
                 None => error("no such element", format!("element {id} has no text")),
             },
         });
+    } else if step.get("screenshot").is_some() {
+        return screenshot(world, jobs, id, job);
+    } else if step.get("source").is_some() {
+        job.out.push(json!({ "xml": page_source(world) }));
     } else if let Some(a) = step.get("attr") {
         let (id, name) = (a["element"].as_str().unwrap_or(""), a["name"].as_str().unwrap_or(""));
         job.out.push(match element(world, id) {
@@ -234,4 +241,76 @@ fn format_value(v: &dyn PartialReflect) -> String {
         return f.to_string();
     }
     format!("{v:?}")
+}
+
+/// Frames to wait for the asynchronous capture before giving up.
+const SCREENSHOT_TIMEOUT_FRAMES: u32 = 600;
+
+/// Capture the primary window. The capture arrives some frames later; the reply waits for it.
+fn screenshot(world: &mut World, jobs: &mut Jobs, id: u64, job: &mut Job) -> bool {
+    if job.phase == 0 {
+        world.spawn(Screenshot::primary_window()).observe(move |captured: On<ScreenshotCaptured>, mut jobs: ResMut<Jobs>| {
+            jobs.shots.insert(id, encode_png(captured.image.clone()));
+        });
+        job.phase = 1;
+        return false;
+    }
+    if let Some(shot) = jobs.shots.remove(&id) {
+        job.phase = 0;
+        job.out.push(match shot {
+            Ok(png) => json!({ "png": png }),
+            Err(e) => error("unable to capture screen", e),
+        });
+        return true;
+    }
+    job.phase += 1;
+    if job.phase > SCREENSHOT_TIMEOUT_FRAMES {
+        job.phase = 0;
+        job.out.push(error("unable to capture screen", "timed out waiting for the capture"));
+        return true;
+    }
+    false
+}
+
+fn encode_png(image: Image) -> Result<String, String> {
+    use base64::Engine;
+    let dynamic = image.try_into_dynamic().map_err(|e| e.to_string())?;
+    // Screenshots can carry an alpha channel the PNG viewer does not need.
+    let rgb = image::DynamicImage::ImageRgb8(dynamic.into_rgb8());
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    rgb.write_to(&mut bytes, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes.into_inner()))
+}
+
+/// The entity hierarchy as XML: one `Entity` element per entity, children nested.
+fn page_source(world: &World) -> String {
+    fn esc(s: &str) -> String {
+        s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    }
+    fn node(world: &World, e: Entity, out: &mut String, depth: usize) {
+        let name = world.get::<Name>(e).map(|n| n.as_str().to_string()).unwrap_or_default();
+        let components: Vec<String> = world
+            .inspect_entity(e)
+            .map(|infos| infos.map(|(_, c)| c.name().shortname().to_string()).collect())
+            .unwrap_or_default();
+        let _ = depth;
+        out.push_str(&format!("<Entity id=\"{}\" name=\"{}\" components=\"{}\"", e.to_bits(), esc(&name), esc(&components.join(","))));
+        match world.get::<Children>(e) {
+            Some(children) if !children.is_empty() => {
+                out.push('>');
+                for c in children.iter() {
+                    node(world, c, out, depth + 1);
+                }
+                out.push_str("</Entity>");
+            }
+            _ => out.push_str("/>"),
+        }
+    }
+    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?><World>");
+    let mut roots = world.try_query_filtered::<Entity, Without<ChildOf>>().expect("query");
+    for e in roots.iter(world) {
+        node(world, e, &mut out, 0);
+    }
+    out.push_str("</World>");
+    out
 }
