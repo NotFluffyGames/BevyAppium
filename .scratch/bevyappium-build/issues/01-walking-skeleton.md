@@ -1,6 +1,6 @@
 ---
 label: ready-for-agent
-status: open
+status: done
 spec: ../../bevyappium-driver/spec.md
 ---
 # 01: Walking skeleton
@@ -11,8 +11,8 @@ spec: ../../bevyappium-driver/spec.md
 
 **Status:** ready-for-agent
 
-- [ ] Driver installs into Appium 4 from a local path and appears in the driver list
-- [ ] Starting a session launches the example game and waits for the Agent port; deleting the session terminates it
-- [ ] Find by `~Name` returns an element; get text returns its label
-- [ ] The whole flow runs headless in CI-style conditions (virtual display, software Vulkan) from one test command
-- [ ] The Agent feature is off by default and the example builds both ways
+- [x] Driver installs into Appium 4 from a local path and appears in the driver list
+- [x] Starting a session launches the example game and waits for the Agent port; deleting the session terminates it
+- [x] Find by `~Name` returns an element; get text returns its label
+- [x] The whole flow runs headless in CI-style conditions (virtual display, software Vulkan) from one test command
+- [x] The Agent feature is off by default and the example builds both ways

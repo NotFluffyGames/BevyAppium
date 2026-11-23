@@ -1,0 +1,15 @@
+[package]
+name = "bevyappium-agent"
+description = "In-game Agent for BevyAppium: exposes a Bevy game to the Appium driver"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[features]
+# Opt-in. Off by default: the plugin is then an empty no-op and none of the
+# dependencies below are compiled in.
+enabled = ["bevy/bevy_remote", "dep:serde_json"]
+
+[dependencies]
+bevy = { workspace = true, features = ["ui"] }
+serde_json = { version = "1", optional = true }
