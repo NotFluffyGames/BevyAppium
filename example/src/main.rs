@@ -1,0 +1,132 @@
+//! Example game: a button and a counter. Test subject for BevyAppium.
+use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::ButtonState;
+use bevy::prelude::*;
+use bevy::ui::InteractionDisabled;
+use bevy::ui_widgets::{Activate, Button};
+use bevyappium_agent::BevyAppiumPlugin;
+
+#[derive(Component)]
+struct Counter(u32);
+
+/// Test fixtures: several same-named entities, a component with no `Name`, and a
+/// short-lived entity (for stale-element tests).
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
+pub struct Enemy;
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
+pub struct Marker;
+
+#[derive(Component)]
+struct Fleeting(Timer);
+
+#[derive(Component)]
+struct CoinCount(u32);
+
+/// Deliberately not registered for reflection: attributes on it read as null.
+#[derive(Component)]
+struct Secret(#[allow(dead_code)] u32);
+
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window { resolution: (400, 300).into(), ..default() }),
+            ..default()
+        }))
+        .insert_resource(SpritePickingSettings { picking_mode: SpritePickingMode::BoundingBox, ..default() })
+        .add_plugins(BevyAppiumPlugin::default())
+        .add_systems(Startup, setup)
+        .add_systems(Update, (despawn_fleeting, log_keys))
+        .add_observer(on_activate)
+        .run();
+}
+
+fn setup(mut commands: Commands) {
+    commands.spawn(Camera2d);
+    for _ in 0..3 {
+        commands.spawn((Name::new("Enemy"), Enemy));
+    }
+    commands.spawn(Marker);
+    // World entities (2D sprites) that react to pointer clicks. `Coin` is on screen,
+    // `FarAway` is far outside the camera view.
+    commands
+        .spawn((Name::new("Coin"), Pickable::default(), Sprite::from_color(Color::srgb(0.9, 0.8, 0.1), Vec2::splat(40.0)), Transform::from_xyz(140.0, -100.0, 1.0)))
+        .observe(|_: On<PointerClick>, mut c: Query<(&mut CoinCount, &mut Text)>| {
+            for (mut n, mut t) in &mut c {
+                n.0 += 1;
+                t.0 = format!("coins: {}", n.0);
+            }
+        });
+    commands.spawn((Name::new("FarAway"), Sprite::from_color(Color::WHITE, Vec2::splat(40.0)), Transform::from_xyz(5000.0, 5000.0, 1.0)));
+    commands.spawn((Name::new("Player"), Transform::from_xyz(10.0, 20.0, 0.0), Visibility::Visible, Secret(7)));
+    commands.spawn((Name::new("Hidden"), Visibility::Hidden));
+    commands.spawn((Name::new("Fleeting"), Text::new("fleeting"), Fleeting(Timer::from_seconds(2.0, TimerMode::Once))));
+    commands
+        .spawn((Pickable::IGNORE, Node {
+            width: percent(100),
+            height: percent(100),
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            row_gap: px(20),
+            ..default()
+        }))
+        .with_children(|p| {
+            p.spawn((
+                Name::new("ClickBtn"),
+                Button,
+                Node { width: px(160), height: px(60), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
+                BackgroundColor(Color::srgb(0.2, 0.4, 0.8)),
+            ))
+            .with_children(|b| {
+                b.spawn(Text::new("Click me"));
+            });
+            p.spawn((
+                Name::new("DisabledBtn"),
+                Button,
+                InteractionDisabled,
+                Node { width: px(160), height: px(30), ..default() },
+            ));
+            p.spawn((Name::new("Collapsed"), Node { width: px(0), height: px(0), ..default() }));
+            p.spawn((Name::new("CoinCount"), CoinCount(0), Text::new("coins: 0")));
+            p.spawn((Name::new("KeyLog"), Text::new("keys: ")));
+            p.spawn((Name::new("Counter"), Counter(0), Text::new("count: 0")));
+        });
+}
+
+fn on_activate(_: On<Activate>, mut c: Query<(&mut Counter, &mut Text)>) {
+    for (mut n, mut t) in &mut c {
+        n.0 += 1;
+        t.0 = format!("count: {}", n.0);
+    }
+}
+
+fn despawn_fleeting(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Fleeting)>) {
+    for (e, mut f) in &mut q {
+        if f.0.tick(time.delta()).is_finished() {
+            commands.entity(e).despawn();
+        }
+    }
+}
+
+/// Appends typed characters to the `KeyLog` text, so tests can observe keyboard input.
+fn log_keys(mut keys: MessageReader<KeyboardInput>, mut log: Query<(&Name, &mut Text)>) {
+    for k in keys.read() {
+        if k.state != ButtonState::Pressed {
+            continue;
+        }
+        let typed = match &k.logical_key {
+            Key::Character(c) => c.to_string(),
+            Key::Space => " ".to_string(),
+            Key::Enter => "\n".to_string(),
+            _ => continue,
+        };
+        for (name, mut text) in &mut log {
+            if name.as_str() == "KeyLog" {
+                text.0.push_str(&typed);
+            }
+        }
+    }
+}
