@@ -1,6 +1,6 @@
 ---
 label: ready-for-agent
-status: open
+status: done
 spec: ../../bevyappium-driver/spec.md
 ---
 # 11: Docs
@@ -11,6 +11,6 @@ spec: ../../bevyappium-driver/spec.md
 
 **Status:** ready-for-agent
 
-- [ ] README: install, a first test, launch and attach modes, CLI usage, limitations, pinned Bevy version and toolchain requirements
-- [ ] Game-author guide: add the plugin behind the feature, name entities, register components for reflection, verify stripping
-- [ ] Documents what is unsupported (XPath, occlusion, touch, mobile) and the standing constraint of not precluding a later mobile port
+- [x] README: install, a first test, launch and attach modes, CLI usage, limitations, pinned Bevy version and toolchain requirements
+- [x] Game-author guide: add the plugin behind the feature, name entities, register components for reflection, verify stripping
+- [x] Documents what is unsupported (XPath, occlusion, touch, mobile) and the standing constraint of not precluding a later mobile port

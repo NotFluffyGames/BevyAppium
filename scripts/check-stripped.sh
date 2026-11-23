@@ -39,8 +39,17 @@ cargo build -p bevyappium-example "${FEATURES[@]}" "${PROFILE_ARGS[@]}" >/dev/nu
 bin="target/$DIR/bevyappium-example"
 
 echo "== binary strings"
+scan="$bin"
+if [ "$PROFILE" != "release" ]; then
+  # Non-release builds keep symbol names; scan what a stripped build would ship.
+  scan="$(mktemp)"; trap 'rm -f "$scan"' EXIT
+  strip -o "$scan" "$bin"
+  echo "(scanning a stripped copy of the $PROFILE binary)"
+else
+  echo "(scanning the release binary as built: your release profile needs strip = true)"
+fi
 for s in "${FORBIDDEN_STRINGS[@]}"; do
-  if grep -aqF -- "$s" "$bin"; then traces+=("binary contains the string '$s'"); fi
+  if grep -aqF -- "$s" "$scan"; then traces+=("binary contains the string '$s'"); fi
 done
 
 if [ "$WITH_AGENT" = 1 ]; then

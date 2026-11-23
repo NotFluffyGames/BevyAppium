@@ -191,7 +191,7 @@ fn click(world: &mut World, job: &mut Job, id: &str) -> bool {
         1 | 2 => {
             let state = if job.phase == 1 { ButtonState::Pressed } else { ButtonState::Released };
             let ev = MouseButtonInput { button: MouseButton::Left, state, window };
-            world.write_message(ev.clone());
+            world.write_message(ev);
             world.write_message(WindowEvent::MouseButtonInput(ev));
         }
         p if p < 3 + SETTLE_FRAMES => {}
@@ -366,7 +366,7 @@ fn keys(world: &mut World, job: &mut Job, text: &str) -> bool {
     let phase = job.phase;
     if phase < typing_frames {
         let (key_code, logical_key) = mapped[(phase / 2) as usize].clone();
-        let state = if phase % 2 == 0 { ButtonState::Pressed } else { ButtonState::Released };
+        let state = if phase.is_multiple_of(2) { ButtonState::Pressed } else { ButtonState::Released };
         let ev = KeyboardInput { key_code, logical_key, state, text: None, repeat: false, window };
         world.write_message(ev.clone());
         world.write_message(WindowEvent::KeyboardInput(ev));

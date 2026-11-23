@@ -70,10 +70,10 @@ fn read_body(stream: &TcpStream) -> std::io::Result<Vec<u8>> {
         if reader.read_line(&mut line)? == 0 || line == "\r\n" || line == "\n" {
             break;
         }
-        if let Some((name, value)) = line.split_once(':') {
-            if name.trim().eq_ignore_ascii_case("content-length") {
-                length = value.trim().parse().unwrap_or(0);
-            }
+        if let Some((name, value)) = line.split_once(':')
+            && name.trim().eq_ignore_ascii_case("content-length")
+        {
+            length = value.trim().parse().unwrap_or(0);
         }
     }
     if length > MAX_BODY {
