@@ -6,6 +6,19 @@ use bevyappium_agent::BevyAppiumPlugin;
 #[derive(Component)]
 struct Counter(u32);
 
+/// Test fixtures: several same-named entities, a component with no `Name`, and a
+/// short-lived entity (for stale-element tests).
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
+pub struct Enemy;
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
+pub struct Marker;
+
+#[derive(Component)]
+struct Fleeting(Timer);
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -14,12 +27,18 @@ fn main() {
         }))
         .add_plugins(BevyAppiumPlugin::default())
         .add_systems(Startup, setup)
+        .add_systems(Update, despawn_fleeting)
         .add_observer(on_activate)
         .run();
 }
 
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
+    for _ in 0..3 {
+        commands.spawn((Name::new("Enemy"), Enemy));
+    }
+    commands.spawn(Marker);
+    commands.spawn((Name::new("Fleeting"), Text::new("fleeting"), Fleeting(Timer::from_seconds(2.0, TimerMode::Once))));
     commands
         .spawn(Node {
             width: percent(100),
@@ -48,5 +67,13 @@ fn on_activate(_: On<Activate>, mut c: Query<(&mut Counter, &mut Text)>) {
     for (mut n, mut t) in &mut c {
         n.0 += 1;
         t.0 = format!("count: {}", n.0);
+    }
+}
+
+fn despawn_fleeting(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Fleeting)>) {
+    for (e, mut f) in &mut q {
+        if f.0.tick(time.delta()).is_finished() {
+            commands.entity(e).despawn();
+        }
     }
 }

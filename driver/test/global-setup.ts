@@ -19,6 +19,7 @@ function run(cmd: string, args: string[], env: NodeJS.ProcessEnv = process.env, 
 }
 
 export async function setup(project: { provide: (k: string, v: unknown) => void }) {
+  run('npm', ['run', 'build'], process.env, driverDir);
   run('cargo', ['build', '-p', 'bevyappium-example', '--features', 'bevyappium']);
   const home = mkdtempSync(path.join(tmpdir(), 'bevyappium-home-'));
   const env = { ...process.env, APPIUM_HOME: home };

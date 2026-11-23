@@ -1,6 +1,6 @@
 ---
 label: ready-for-agent
-status: open
+status: done
 spec: ../../bevyappium-driver/spec.md
 ---
 # 03: Element model: ids, locators, staleness
@@ -11,8 +11,8 @@ spec: ../../bevyappium-driver/spec.md
 
 **Status:** ready-for-agent
 
-- [ ] Every entity is findable; Name locators need `Name`, component locators do not
-- [ ] Element id is the entity's index and generation as a string
-- [ ] Acting on a despawned entity's id gives `stale element reference`, even if the index is reused
-- [ ] Find-all returns every match; no match gives `no such element` cleanly
-- [ ] XPath and other unsupported strategies fail with a clear not-supported error
+- [x] Every entity is findable; Name locators need `Name`, component locators do not
+- [x] Element id is the entity's index and generation as a string
+- [x] Acting on a despawned entity's id gives `stale element reference`, even if the index is reused
+- [x] Find-all returns every match; no match gives `no such element` cleanly
+- [x] XPath and other unsupported strategies fail with a clear not-supported error
