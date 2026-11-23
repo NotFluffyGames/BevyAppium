@@ -2,13 +2,11 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { readFileSync, writeFileSync, chmodSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { remote } from 'webdriverio';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, inject, it } from 'vitest';
-import { newSession } from './helpers.js';
+import { connect, newSession, raw } from './helpers.js';
 
-const caps = (extra: Record<string, unknown>) => ({ platformName: 'Linux', 'appium:automationName': 'Bevy', ...extra }) as WebdriverIO.Capabilities;
-const session = (extra: Record<string, unknown>) =>
-  remote({ hostname: '127.0.0.1', port: inject('appiumPort'), logLevel: 'error', capabilities: caps(extra) });
+const session = connect;
 
 /** TCP listeners as "addrHex:port" read from the kernel table. */
 const listeners = () => readFileSync('/proc/net/tcp', 'utf8').split('\n').slice(1)
@@ -16,6 +14,7 @@ const listeners = () => readFileSync('/proc/net/tcp', 'utf8').split('\n').slice(
 const gamePids = () => { try { return execFileSync('pgrep', ['-f', 'target/debug/bevyappium-example'], { encoding: 'utf8' }).trim().split('\n').map(Number); } catch { return []; } };
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const until = async (pred: () => boolean, ms = 10000) => { for (let i = 0; i < ms / 100 && !pred(); i++) await sleep(100); };
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 describe('session lifecycle robustness', () => {
@@ -50,10 +49,9 @@ describe('session lifecycle robustness', () => {
     const [pid] = gamePids();
     process.kill(pid, 'SIGKILL');
     await until(() => !alive(pid));
-    const res = await fetch(`http://127.0.0.1:${inject('appiumPort')}/session/${browser.sessionId}/element`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ using: 'accessibility id', value: 'Counter' }) });
+    const res = await raw(browser, 'POST', '/element', { using: 'accessibility id', value: 'Counter' });
     expect(res.status).toBe(500);
-    expect(JSON.stringify(await res.json())).toMatch(/The game exited/);
+    expect(JSON.stringify(res.value)).toMatch(/The game exited/);
     await browser.deleteSession();
   });
 
@@ -77,5 +75,36 @@ describe('session lifecycle robustness', () => {
 
   it('a session without app or agentPort is rejected', async () => {
     await expect(session({})).rejects.toThrow(/appium:app/);
+  });
+
+  /** A fake game (node script) that serves the Agent port; see test/fixtures/stubborn-game.mjs. */
+  const fakeGame = () => {
+    const script = path.join(mkdtempSync(path.join(tmpdir(), 'fake-game-')), 'fake-game');
+    writeFileSync(script, `#!/bin/sh\nexec ${process.execPath} ${path.resolve(__dirname, 'fixtures/stubborn-game.mjs')}\n`);
+    chmodSync(script, 0o755);
+    return script;
+  };
+  const processAlive = (pattern: string) => { try { return execFileSync('pgrep', ['-f', pattern], { encoding: 'utf8' }).trim() !== ''; } catch { return false; } };
+
+  it('a game that ignores SIGTERM is killed when the session ends', async () => {
+    const browser = await session({ 'appium:app': fakeGame() });
+    expect(processAlive('stubborn-game.mjs')).toBe(true);
+    await browser.deleteSession();
+    expect(processAlive('stubborn-game.mjs')).toBe(false); // killed, not leaked
+  });
+
+  it('a hung game fails the command instead of blocking, and the session still ends cleanly', async () => {
+    const browser = await session({ 'appium:app': fakeGame(), 'appium:agentCommandTimeout': 1500 });
+    // the fake answered the startup probes; now freeze it so it accepts connections but never replies
+    const [pid] = execFileSync('pgrep', ['-f', 'stubborn-game.mjs'], { encoding: 'utf8' }).trim().split('\n').map(Number);
+    process.kill(pid, 'SIGSTOP');
+    const started = Date.now();
+    const res = await raw(browser, 'POST', '/element', { using: 'accessibility id', value: 'Anything' });
+    expect(Date.now() - started).toBeLessThan(10000);
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(res.value)).toMatch(/did not reply/);
+    process.kill(pid, 'SIGCONT');
+    await browser.deleteSession();
+    expect(processAlive('stubborn-game.mjs')).toBe(false);
   });
 });

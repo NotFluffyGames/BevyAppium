@@ -61,6 +61,7 @@ Or let the CLI manage the server: `bevyappium run --app ./target/debug/my-game -
 | `appium:app` | Path to the game binary. **Launch mode**: the Driver starts the game, owns it, and terminates it when the session ends. |
 | `appium:agentPort` | With `app`: a fixed Agent port (default: a free one). Without `app`: **attach mode** — connect to a game you started with `BEVYAPPIUM_PORT=<port>`; it is left running at the end of the session. |
 | `appium:agentStartupTimeout` | Milliseconds to wait for the Agent port (default 60000). |
+| `appium:agentCommandTimeout` | Milliseconds one command may wait for the game's reply before the game counts as hung and the command fails (default 60000). |
 
 ## What you can do
 
@@ -86,6 +87,8 @@ Or let the CLI manage the server: `bevyappium run --app ./target/debug/my-game -
 | screenshot | base64 PNG of the primary window |
 | page source | the entity hierarchy as XML |
 | `execute('bevy: waitFrames', {frames: N})` | reply after N game frames |
+
+When a session ends the game gets SIGTERM and, if it has not exited after 3 seconds, SIGKILL; games are also killed if the Appium process itself exits.
 
 Every command is applied at a fixed point in the frame schedule and answered only after the frame
 completes, so the next command sees its effect.

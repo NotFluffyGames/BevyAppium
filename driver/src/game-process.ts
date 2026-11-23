@@ -1,6 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
-import { AgentClient } from './agent-client.js';
+import { AgentClient, DEFAULT_COMMAND_TIMEOUT_MS } from './agent-client.js';
+
+/** How long to wait for the Agent port to open after launching (or attaching). */
+export const DEFAULT_STARTUP_TIMEOUT_MS = 60000;
+/** After SIGTERM, how long a game gets to exit before it is killed. */
+const TERMINATE_GRACE_MS = 3000;
 
 export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -12,18 +17,30 @@ export function freePort(): Promise<number> {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-/** Poll until the Agent answers, or fail with `fail()` when `abort()` says the wait is pointless. */
-export async function waitForAgent(port: number, timeoutMs: number, abort: () => string | undefined = () => undefined): Promise<AgentClient> {
-  const client = new AgentClient(port);
-  const deadline = Date.now() + timeoutMs;
+export interface WaitOptions {
+  startupTimeoutMs?: number;
+  commandTimeoutMs?: number;
+  /** Return a reason to stop waiting early (for example, the game already exited). */
+  abort?: () => string | undefined;
+}
+
+/** Poll until the Agent answers; resolves with a client whose commands use `commandTimeoutMs`. */
+export async function waitForAgent(port: number, opts: WaitOptions = {}): Promise<AgentClient> {
+  const { startupTimeoutMs = DEFAULT_STARTUP_TIMEOUT_MS, commandTimeoutMs = DEFAULT_COMMAND_TIMEOUT_MS, abort = () => undefined } = opts;
+  const client = new AgentClient(port, commandTimeoutMs);
+  const deadline = Date.now() + startupTimeoutMs;
   for (;;) {
     const why = abort();
     if (why) throw new Error(why);
-    try { await client.run([]); return client; } catch { /* not up yet */ }
-    if (Date.now() >= deadline) throw new Error(`The Agent did not open port ${port} within ${timeoutMs} ms`);
+    try { await client.run([], 2000); return client; } catch { /* not up yet */ }
+    if (Date.now() >= deadline) throw new Error(`The Agent did not open port ${port} within ${startupTimeoutMs} ms`);
     await sleep(250);
   }
 }
+
+// If the Driver's process ends (Appium shut down or killed), do not leave games running.
+const live = new Set<ChildProcess>();
+process.on('exit', () => { for (const child of live) child.kill('SIGKILL'); });
 
 /** Launches the game binary with the Agent port and owns its lifetime. */
 export class GameProcess {
@@ -34,14 +51,16 @@ export class GameProcess {
 
   constructor(readonly binary: string, readonly port: number) {}
 
-  async start(timeoutMs: number): Promise<AgentClient> {
-    this.child = spawn(this.binary, [], { env: { ...process.env, BEVYAPPIUM_PORT: String(this.port) }, stdio: 'inherit' });
-    this.child.once('error', e => { this.spawnError = e; });
-    this.child.once('exit', (code, signal) => { this.exited = { code, signal }; });
+  async start(opts: WaitOptions = {}): Promise<AgentClient> {
+    const child = spawn(this.binary, [], { env: { ...process.env, BEVYAPPIUM_PORT: String(this.port) }, stdio: 'inherit' });
+    this.child = child;
+    live.add(child);
+    child.once('error', e => { this.spawnError = e; });
+    child.once('exit', (code, signal) => { this.exited = { code, signal }; live.delete(child); });
     try {
-      return await waitForAgent(this.port, timeoutMs, () => this.problem());
+      return await waitForAgent(this.port, { ...opts, abort: () => this.problem() });
     } catch (e) {
-      this.stop();
+      await this.stop();
       throw e;
     }
   }
@@ -53,5 +72,20 @@ export class GameProcess {
     return undefined;
   }
 
-  stop() { this.child?.kill('SIGTERM'); this.child = undefined; }
+  /** Ask the game to exit; if it has not within the grace period, kill it. Resolves once it is gone. */
+  async stop(graceMs = TERMINATE_GRACE_MS): Promise<void> {
+    const child = this.child;
+    this.child = undefined;
+    if (!child || !child.pid || this.exited) return;
+    const gone = new Promise<void>(resolve => child.once('exit', () => resolve()));
+    child.kill('SIGTERM');
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), graceMs); });
+    const outcome = await Promise.race([gone.then(() => 'exited' as const), timedOut]);
+    clearTimeout(timer);
+    if (outcome === 'timeout') {
+      child.kill('SIGKILL');
+      await gone;
+    }
+  }
 }

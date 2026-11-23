@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { newSession } from './helpers.js';
+import { clickRaw, findId, newSession } from './helpers.js';
 
 describe('UI click and frame sync', () => {
   let browser: WebdriverIO.Browser;
@@ -22,15 +22,16 @@ describe('UI click and frame sync', () => {
     expect(await browser.$('~Counter').getText()).toBe(`count: ${before + 15}`);
   });
 
-  it('waitFrames replies after the requested frames have run', async () => {
+  it('waitFrames replies after the requested frames have run, including zero', async () => {
     const t0 = Date.now();
     await browser.execute('bevy: waitFrames', { frames: 5 });
+    await browser.execute('bevy: waitFrames', { frames: 0 });
     expect(Date.now() - t0).toBeLessThan(10000);
   });
 
   it('clicking an element that cannot be clicked fails as not interactable', async () => {
-    const res = await fetch(`http://127.0.0.1:${(browser.options as any).port}/session/${browser.sessionId}/element/${(await browser.findElement('accessibility id', 'Enemy') as any)['element-6066-11e4-a52e-4f735466cecf']}/click`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const res = await clickRaw(browser, await findId(browser, 'Enemy'));
     expect(res.status).toBe(400);
-    expect((await res.json() as any).value.error).toBe('element not interactable');
+    expect(res.value.error).toBe('element not interactable');
   });
 });

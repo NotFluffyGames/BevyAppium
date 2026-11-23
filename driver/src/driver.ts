@@ -1,37 +1,44 @@
 import { BaseDriver, errors } from 'appium/driver.js';
 import type { Constraints } from '@appium/types';
-import { AgentClient, AgentUnreachableError, type StepResult, type Step } from './agent-client.js';
-import { GameProcess, freePort, waitForAgent } from './game-process.js';
+import { AgentClient, AgentUnreachableError, DEFAULT_COMMAND_TIMEOUT_MS, type Step, type StepResult } from './agent-client.js';
+import { DEFAULT_STARTUP_TIMEOUT_MS, GameProcess, freePort, waitForAgent } from './game-process.js';
 
 const W3C_ELEMENT = 'element-6066-11e4-a52e-4f735466cecf';
 
 const CONSTRAINTS = {
+  /** Launch mode: path to the game binary. */
   app: { isString: true },
   /** Launch mode: fixed Agent port (default: a free one). Attach mode: the port of a running game. */
   agentPort: { isNumber: true },
   /** How long to wait for the Agent to open its port, in milliseconds. */
   agentStartupTimeout: { isNumber: true },
+  /** How long one command may wait for the game's reply before the game counts as hung, in milliseconds. */
+  agentCommandTimeout: { isNumber: true },
 } as const satisfies Constraints;
 
 type BevyConstraints = typeof CONSTRAINTS;
 
-/** WebDriver locator strategy -> Agent find mode. */
-const LOCATORS: Record<string, string> = { 'accessibility id': 'name', id: 'name', 'class name': 'component' };
+/** WebDriver locator strategy -> how the Agent matches it. */
+const LOCATORS: Record<string, 'name' | 'component'> = { 'accessibility id': 'name', id: 'name', 'class name': 'component' };
 
-/** Map an Agent error result to the matching WebDriver error. */
+/** Agent error code -> WebDriver error. Anything else becomes an unknown error. */
+const AGENT_ERRORS: Record<string, new (message?: string) => Error> = {
+  'stale element reference': errors.StaleElementReferenceError,
+  'no such element': errors.NoSuchElementError,
+  'element not interactable': errors.ElementNotInteractableError,
+  'invalid selector': errors.InvalidSelectorError,
+  'invalid argument': errors.InvalidArgumentError,
+  'unable to capture screen': errors.UnableToCaptureScreen,
+};
+
 function throwAgentError(r: StepResult): void {
   const e = r.error as { code: string; message: string } | undefined;
   if (!e) return;
-  switch (e.code) {
-    case 'stale element reference': throw new errors.StaleElementReferenceError(e.message);
-    case 'no such element': throw new errors.NoSuchElementError(e.message);
-    case 'element not interactable': throw new errors.ElementNotInteractableError(e.message);
-    case 'unable to capture screen': throw new errors.UnableToCaptureScreen(e.message);
-    case 'invalid argument': throw new errors.InvalidArgumentError(e.message);
-    case 'invalid selector': throw new errors.InvalidSelectorError(e.message);
-    default: throw new errors.UnknownError(`${e.code}: ${e.message}`);
-  }
+  const ErrorClass = AGENT_ERRORS[e.code];
+  throw ErrorClass ? new ErrorClass(e.message) : new errors.UnknownError(`${e.code}: ${e.message}`);
 }
+
+const asElement = (id: string) => ({ ELEMENT: id, [W3C_ELEMENT]: id });
 
 export class BevyDriver extends BaseDriver<BevyConstraints> {
   static executeMethodMap = {
@@ -46,15 +53,16 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
   override async createSession(...args: Parameters<BaseDriver<BevyConstraints>['createSession']>) {
     const [sid, caps] = await super.createSession(...args);
     try {
-      const { app, agentPort, agentStartupTimeout } = this.opts as { app?: string; agentPort?: number; agentStartupTimeout?: number };
-      const timeout = agentStartupTimeout ?? 60000;
+      const { app, agentPort, agentStartupTimeout, agentCommandTimeout } =
+        this.opts as { app?: string; agentPort?: number; agentStartupTimeout?: number; agentCommandTimeout?: number };
+      const wait = { startupTimeoutMs: agentStartupTimeout ?? DEFAULT_STARTUP_TIMEOUT_MS, commandTimeoutMs: agentCommandTimeout ?? DEFAULT_COMMAND_TIMEOUT_MS };
       if (app) {
         // Launch mode: the Driver starts the game and owns its lifetime.
         this.game = new GameProcess(app, agentPort ?? await freePort());
-        this.agent = await this.game.start(timeout);
+        this.agent = await this.game.start(wait);
       } else if (agentPort) {
         // Attach mode: the game is already running; the Driver never stops it.
-        this.agent = await waitForAgent(agentPort, timeout);
+        this.agent = await waitForAgent(agentPort, wait);
       } else {
         throw new Error('Set `appium:app` (path to the game binary) to launch a game, or `appium:agentPort` to attach to a running one');
       }
@@ -66,9 +74,10 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
   }
 
   override async deleteSession(sessionId?: string | null) {
-    this.game?.stop();
+    const game = this.game;
     this.game = undefined;
     this.agent = undefined;
+    await game?.stop();
     await super.deleteSession(sessionId);
   }
 
@@ -77,35 +86,27 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
     if (!using) {
       throw new errors.InvalidSelectorError(`Unsupported locator strategy '${strategy}'. Supported: ${this.locatorStrategies.join(', ')}`);
     }
-    const [r] = await this.run([{ find: { using, value: selector } }]);
-    throwAgentError(r);
-    const els = (r.elements as string[]).map(id => ({ ELEMENT: id, [W3C_ELEMENT]: id }));
+    const r = await this.step({ find: { using, value: selector } });
+    const els = (r.elements as string[]).map(asElement);
     if (mult) return els as any;
     if (!els.length) throw new errors.NoSuchElementError();
     return els[0] as any;
   }
 
   async getText(elementId: string): Promise<string> {
-    const [r] = await this.run([{ text: elementId }]);
-    throwAgentError(r);
-    return r.text as string;
+    return (await this.step({ text: elementId })).text as string;
   }
 
   async click(elementId: string): Promise<void> {
-    const [r] = await this.run([{ click: elementId }]);
-    throwAgentError(r);
+    await this.step({ click: elementId });
   }
 
   async getAttribute(name: string, elementId: string): Promise<string | null> {
-    const [r] = await this.run([{ attr: { element: elementId, name } }]);
-    throwAgentError(r);
-    return (r.value as string | null) ?? null;
+    return ((await this.step({ attr: { element: elementId, name } })).value as string | null) ?? null;
   }
 
   async elementDisplayed(elementId: string): Promise<boolean> {
-    const [r] = await this.run([{ displayed: elementId }]);
-    throwAgentError(r);
-    return r.value as boolean;
+    return (await this.step({ displayed: elementId })).value as boolean;
   }
 
   async elementEnabled(elementId: string): Promise<boolean> {
@@ -113,21 +114,16 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
   }
 
   /** Send keys: the text is typed into the game (the game has no element focus concept here). */
-  async setValue(text: string | string[], elementId: string): Promise<void> {
-    const [r] = await this.run([{ keys: Array.isArray(text) ? text.join('') : text }]);
-    throwAgentError(r);
+  async setValue(text: string | string[], _elementId: string): Promise<void> {
+    await this.step({ keys: Array.isArray(text) ? text.join('') : text });
   }
 
   async getScreenshot(): Promise<string> {
-    const [r] = await this.run([{ screenshot: true }]);
-    throwAgentError(r);
-    return r.png as string;
+    return (await this.step({ screenshot: true })).png as string;
   }
 
   async getPageSource(): Promise<string> {
-    const [r] = await this.run([{ source: true }]);
-    throwAgentError(r);
-    return r.xml as string;
+    return (await this.step({ source: true })).xml as string;
   }
 
   /** WebDriver "Execute Script": only `bevy: ...` extension commands are supported. */
@@ -141,6 +137,13 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
   /** Custom command `bevy: waitFrames`: reply after N game frames have run. */
   async waitFrames(frames: number): Promise<void> {
     await this.run([{ wait: frames }]);
+  }
+
+  /** Run one step and return its result, turning an Agent error into the matching WebDriver error. */
+  private async step(step: Step): Promise<StepResult> {
+    const [result] = await this.run([step]);
+    throwAgentError(result);
+    return result;
   }
 
   /** Run steps in the game; if the Agent cannot be reached, say whether the game died. */

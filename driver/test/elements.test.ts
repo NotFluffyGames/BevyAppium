@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import { elementId, newSession } from './helpers.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { findId, newSession, raw } from './helpers.js';
 
 describe('element model', () => {
   let browser: WebdriverIO.Browser;
@@ -34,11 +34,11 @@ describe('element model', () => {
 
   it('a despawned entity gives stale element reference', async () => {
     // raw commands: a `$()` element would silently re-find itself
-    const fleeting = elementId(await browser.findElement('accessibility id', 'Fleeting') as any);
+    const fleeting = await findId(browser, 'Fleeting');
     expect(await browser.getElementText(fleeting)).toBe('fleeting');
     await new Promise(r => setTimeout(r, 3500)); // despawns after ~2s
-    const res = await fetch(`http://127.0.0.1:${inject('appiumPort')}/session/${browser.sessionId}/element/${fleeting}/text`);
+    const res = await raw(browser, 'GET', `/element/${fleeting}/text`);
     expect(res.status).toBe(404);
-    expect((await res.json() as any).value.error).toBe('stale element reference');
+    expect(res.value.error).toBe('stale element reference');
   });
 });

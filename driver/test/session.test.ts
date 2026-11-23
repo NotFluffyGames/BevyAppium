@@ -1,18 +1,9 @@
-import { remote } from 'webdriverio';
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { newSession } from './helpers.js';
 
 describe('walking skeleton', () => {
   let browser: WebdriverIO.Browser;
-  beforeAll(async () => {
-    browser = await remote({
-      hostname: '127.0.0.1', port: inject('appiumPort'), logLevel: 'error',
-      capabilities: {
-        platformName: 'Linux',
-        'appium:automationName': 'Bevy',
-        'appium:app': inject('gameBinary'),
-      } as WebdriverIO.Capabilities,
-    });
-  });
+  beforeAll(async () => { browser = await newSession(); });
   afterAll(async () => { await browser?.deleteSession(); });
 
   it('finds an element by accessibility id and reads its text', async () => {

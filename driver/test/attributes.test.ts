@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { elementId, newSession } from './helpers.js';
+import { findId, newSession } from './helpers.js';
 
 describe('attributes, displayed, enabled', () => {
   let browser: WebdriverIO.Browser;
-  const find = async (name: string) => elementId(await browser.findElement('accessibility id', name) as any);
+  const find = (name: string) => findId(browser, name);
   beforeAll(async () => { browser = await newSession(); });
   afterAll(async () => { await browser?.deleteSession(); });
 

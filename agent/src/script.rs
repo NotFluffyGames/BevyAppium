@@ -26,6 +26,7 @@ pub fn build(app: &mut App, port: u16) {
 
 #[derive(Default)]
 struct Job {
+    steps: Vec<Value>,
     step: usize,
     waited: u32,
     /// Phase within a multi-frame step (click: move, press, release, settle).
@@ -37,7 +38,7 @@ struct Job {
 /// system instance is shared by all requests.
 #[derive(Resource, Default)]
 struct Jobs {
-    running: HashMap<u64, (Vec<Value>, Job)>,
+    running: HashMap<u64, Job>,
     done: HashMap<u64, Value>,
     /// Every id ever registered. BRP may call the handler again after the reply was
     /// sent; without this a finished script would be registered, and run, a second time.
@@ -54,7 +55,7 @@ fn run_method(In(params): In<Option<Value>>, mut jobs: ResMut<Jobs>) -> BrpResul
     }
     if jobs.seen.insert(id) {
         let steps = p["steps"].as_array().cloned().unwrap_or_default();
-        jobs.running.insert(id, (steps, Job::default()));
+        jobs.running.insert(id, Job { steps, ..Job::default() });
     }
     Ok(None) // not yet: reply after the script finishes
 }
@@ -63,17 +64,29 @@ fn drive_jobs(world: &mut World) {
     world.resource_scope(|world, mut jobs: Mut<Jobs>| {
         let ids: Vec<u64> = jobs.running.keys().copied().collect();
         for id in ids {
-            let (steps, mut job) = jobs.running.remove(&id).unwrap();
-            let Some(step) = steps.get(job.step) else {
+            let mut job = jobs.running.remove(&id).unwrap();
+            let Some(step) = job.steps.get(job.step).cloned() else {
                 jobs.done.insert(id, json!({ "results": job.out }));
                 continue;
             };
-            if run_step(world, &mut jobs, id, &mut job, step) {
+            if run_step(world, &mut jobs, id, &mut job, &step) {
                 job.step += 1;
             }
-            jobs.running.insert(id, (steps, job));
+            jobs.running.insert(id, job);
         }
     });
+}
+
+/// Error codes sent to the Driver; the Driver maps each to a WebDriver error.
+mod code {
+    pub const NO_SUCH_ELEMENT: &str = "no such element";
+    pub const STALE: &str = "stale element reference";
+    pub const NOT_INTERACTABLE: &str = "element not interactable";
+    pub const INVALID_SELECTOR: &str = "invalid selector";
+    pub const INVALID_ARGUMENT: &str = "invalid argument";
+    pub const UNKNOWN_COMMAND: &str = "unknown command";
+    pub const UNKNOWN_ERROR: &str = "unknown error";
+    pub const CAPTURE_FAILED: &str = "unable to capture screen";
 }
 
 fn error(code: &str, message: impl ToString) -> Value {
@@ -82,8 +95,20 @@ fn error(code: &str, message: impl ToString) -> Value {
 
 /// Parse an element id; a despawned entity (even with a reused index) is stale.
 fn element(world: &World, id: &str) -> Result<Entity, Value> {
-    let entity = id.parse::<u64>().ok().and_then(Entity::try_from_bits).ok_or_else(|| error("no such element", format!("bad element id {id}")))?;
-    world.get_entity(entity).map(|_| entity).map_err(|_| error("stale element reference", format!("element {id} no longer exists")))
+    let entity = id.parse::<u64>().ok().and_then(Entity::try_from_bits).ok_or_else(|| error(code::NO_SUCH_ELEMENT, format!("bad element id {id}")))?;
+    world.get_entity(entity).map(|_| entity).map_err(|_| error(code::STALE, format!("element {id} no longer exists")))
+}
+
+/// Resolve an element id and build the reply from it; a bad or stale id becomes the error reply.
+fn with_element(world: &World, id: &str, f: impl FnOnce(&World, Entity) -> Value) -> Value {
+    match element(world, id) {
+        Ok(e) => f(world, e),
+        Err(err) => err,
+    }
+}
+
+fn primary_window(world: &mut World) -> Result<Entity, Value> {
+    world.query_filtered::<Entity, With<PrimaryWindow>>().iter(world).next().ok_or_else(|| error(code::UNKNOWN_ERROR, "no primary window"))
 }
 
 fn find_by_name(world: &mut World, name: &str) -> Vec<Entity> {
@@ -103,54 +128,48 @@ fn find_by_component(world: &World, path: &str) -> Vec<Entity> {
 }
 
 /// Run one step. Returns true when the step is finished (false: run again next frame).
-fn run_step(world: &mut World, jobs: &mut Jobs, id: u64, job: &mut Job, step: &Value) -> bool {
+fn run_step(world: &mut World, jobs: &mut Jobs, job_id: u64, job: &mut Job, step: &Value) -> bool {
     if let Some(f) = step.get("find") {
         let (using, value) = (f["using"].as_str().unwrap_or(""), f["value"].as_str().unwrap_or(""));
         let found = match using {
             "name" => find_by_name(world, value),
             "component" => find_by_component(world, value),
             other => {
-                job.out.push(error("invalid selector", format!("unsupported locator '{other}'")));
+                job.out.push(error(code::INVALID_SELECTOR, format!("unsupported locator '{other}'")));
                 return true;
             }
         };
         let ids: Vec<String> = found.iter().map(|e| e.to_bits().to_string()).collect();
         job.out.push(json!({ "elements": ids }));
     } else if let Some(id) = step["text"].as_str() {
-        job.out.push(match element(world, id) {
-            Err(e) => e,
-            Ok(e) => match world.get::<Text>(e) {
-                Some(t) => json!({ "text": t.0 }),
-                None => error("no such element", format!("element {id} has no text")),
-            },
-        });
+        job.out.push(with_element(world, id, |world, e| match world.get::<Text>(e) {
+            Some(t) => json!({ "text": t.0 }),
+            None => error(code::NO_SUCH_ELEMENT, format!("element {id} has no text")),
+        }));
     } else if step.get("screenshot").is_some() {
-        return screenshot(world, jobs, id, job);
+        return screenshot(world, jobs, job_id, job);
     } else if step.get("source").is_some() {
         job.out.push(json!({ "xml": page_source(world) }));
     } else if let Some(a) = step.get("attr") {
-        let (id, name) = (a["element"].as_str().unwrap_or(""), a["name"].as_str().unwrap_or(""));
-        job.out.push(match element(world, id) {
-            Err(e) => e,
-            Ok(e) => json!({ "value": attribute(world, e, name) }),
-        });
+        let name = a["name"].as_str().unwrap_or("");
+        job.out.push(with_element(world, a["element"].as_str().unwrap_or(""), |world, e| json!({ "value": attribute(world, e, name) })));
     } else if let Some(id) = step["displayed"].as_str() {
-        job.out.push(match element(world, id) {
-            Err(e) => e,
-            Ok(e) => json!({ "value": displayed(world, e) }),
-        });
+        job.out.push(with_element(world, id, |world, e| json!({ "value": displayed(world, e) })));
     } else if let Some(text) = step["keys"].as_str() {
         return keys(world, job, text);
     } else if let Some(id) = step["click"].as_str() {
         return click(world, job, id);
     } else if let Some(n) = step["wait"].as_u64() {
+        if n == 0 {
+            return true;
+        }
         job.waited += 1;
         if u64::from(job.waited) <= n {
             return false;
         }
         job.waited = 0;
     } else {
-        job.out.push(error("unknown command", format!("unknown step: {step}")));
+        job.out.push(error(code::UNKNOWN_COMMAND, format!("unknown step: {step}")));
     }
     true
 }
@@ -170,14 +189,16 @@ fn click(world: &mut World, job: &mut Job, id: &str) -> bool {
     let pos = match click_position(world, entity) {
         Ok(p) => p,
         Err(why) => {
-            job.out.push(error("element not interactable", format!("element {id}: {why}")));
+            job.out.push(error(code::NOT_INTERACTABLE, format!("element {id}: {why}")));
             return true;
         }
     };
-    let window = world.query_filtered::<Entity, With<PrimaryWindow>>().iter(world).next();
-    let Some(window) = window else {
-        job.out.push(error("unknown error", "no primary window"));
-        return true;
+    let window = match primary_window(world) {
+        Ok(w) => w,
+        Err(e) => {
+            job.out.push(e);
+            return true;
+        }
     };
     match job.phase {
         0 => {
@@ -266,14 +287,14 @@ fn screenshot(world: &mut World, jobs: &mut Jobs, id: u64, job: &mut Job) -> boo
         job.phase = 0;
         job.out.push(match shot {
             Ok(png) => json!({ "png": png }),
-            Err(e) => error("unable to capture screen", e),
+            Err(e) => error(code::CAPTURE_FAILED, e),
         });
         return true;
     }
     job.phase += 1;
     if job.phase > SCREENSHOT_TIMEOUT_FRAMES {
         job.phase = 0;
-        job.out.push(error("unable to capture screen", "timed out waiting for the capture"));
+        job.out.push(error(code::CAPTURE_FAILED, "timed out waiting for the capture"));
         return true;
     }
     false
@@ -294,19 +315,18 @@ fn page_source(world: &World) -> String {
     fn esc(s: &str) -> String {
         s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
     }
-    fn node(world: &World, e: Entity, out: &mut String, depth: usize) {
+    fn node(world: &World, e: Entity, out: &mut String) {
         let name = world.get::<Name>(e).map(|n| n.as_str().to_string()).unwrap_or_default();
         let components: Vec<String> = world
             .inspect_entity(e)
             .map(|infos| infos.map(|(_, c)| c.name().shortname().to_string()).collect())
             .unwrap_or_default();
-        let _ = depth;
         out.push_str(&format!("<Entity id=\"{}\" name=\"{}\" components=\"{}\"", e.to_bits(), esc(&name), esc(&components.join(","))));
         match world.get::<Children>(e) {
             Some(children) if !children.is_empty() => {
                 out.push('>');
                 for c in children.iter() {
-                    node(world, c, out, depth + 1);
+                    node(world, c, out);
                 }
                 out.push_str("</Entity>");
             }
@@ -316,7 +336,7 @@ fn page_source(world: &World) -> String {
     let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?><World>");
     let mut roots = world.try_query_filtered::<Entity, Without<ChildOf>>().expect("query");
     for e in roots.iter(world) {
-        node(world, e, &mut out, 0);
+        node(world, e, &mut out);
     }
     out.push_str("</World>");
     out
@@ -354,13 +374,15 @@ fn keys(world: &mut World, job: &mut Job, text: &str) -> bool {
     let mapped: Option<Vec<(KeyCode, Key)>> = chars.iter().map(|c| key_for(*c)).collect();
     let Some(mapped) = mapped else {
         let bad = chars.iter().find(|c| key_for(**c).is_none()).copied().unwrap_or('?');
-        job.out.push(error("invalid argument", format!("unsupported character {bad:?}")));
+        job.out.push(error(code::INVALID_ARGUMENT, format!("unsupported character {bad:?}")));
         return true;
     };
-    let window = world.query_filtered::<Entity, With<PrimaryWindow>>().iter(world).next();
-    let Some(window) = window else {
-        job.out.push(error("unknown error", "no primary window"));
-        return true;
+    let window = match primary_window(world) {
+        Ok(w) => w,
+        Err(e) => {
+            job.out.push(e);
+            return true;
+        }
     };
     let typing_frames = 2 * mapped.len() as u32;
     let phase = job.phase;
