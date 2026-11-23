@@ -22,13 +22,16 @@ function throwAgentError(r: StepResult): void {
   switch (e.code) {
     case 'stale element reference': throw new errors.StaleElementReferenceError(e.message);
     case 'no such element': throw new errors.NoSuchElementError(e.message);
+    case 'element not interactable': throw new errors.ElementNotInteractableError(e.message);
     case 'invalid selector': throw new errors.InvalidSelectorError(e.message);
     default: throw new errors.UnknownError(`${e.code}: ${e.message}`);
   }
 }
 
 export class BevyDriver extends BaseDriver<BevyConstraints> {
-  static executeMethodMap = {} as const;
+  static executeMethodMap = {
+    'bevy: waitFrames': { command: 'waitFrames', params: { required: ['frames'] } },
+  } as const;
   override desiredCapConstraints = CONSTRAINTS;
   override locatorStrategies = ['accessibility id', 'id', 'class name'];
 
@@ -74,6 +77,24 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
     const [r] = await this.client().run([{ text: elementId }]);
     throwAgentError(r);
     return r.text as string;
+  }
+
+  async click(elementId: string): Promise<void> {
+    const [r] = await this.client().run([{ click: elementId }]);
+    throwAgentError(r);
+  }
+
+  /** WebDriver "Execute Script": only `bevy: ...` extension commands are supported. */
+  async execute(script: string, args?: unknown[]): Promise<unknown> {
+    if (!script.startsWith('bevy:')) {
+      throw new errors.InvalidArgumentError(`Unsupported script '${script}'. Use a 'bevy: ...' command.`);
+    }
+    return await this.executeMethod(script, [args?.[0] ?? {}]);
+  }
+
+  /** Custom command `bevy: waitFrames`: reply after N game frames have run. */
+  async waitFrames(frames: number): Promise<void> {
+    await this.client().run([{ wait: frames }]);
   }
 
   private client(): AgentClient {

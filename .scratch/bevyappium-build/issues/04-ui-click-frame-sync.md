@@ -1,6 +1,6 @@
 ---
 label: ready-for-agent
-status: open
+status: done
 spec: ../../bevyappium-driver/spec.md
 ---
 # 04: UI click with frame-synced replies
@@ -11,9 +11,9 @@ spec: ../../bevyappium-driver/spec.md
 
 **Status:** ready-for-agent
 
-- [ ] Click on a UI node targets the centre of its computed layout rectangle
-- [ ] Pointer input writes both the bare messages and the window-event wrapper and sets the window cursor, so UI picking and buttons respond
-- [ ] Move, press and release happen on separate frames; input is injected after the message swap and before input processing
-- [ ] A custom Appium command waits N frames before replying
-- [ ] Per-request script state is isolated so concurrent requests do not interfere
-- [ ] Example game button click increments a visible counter, verified by a test
+- [x] Click on a UI node targets the centre of its computed layout rectangle
+- [x] Pointer input writes both the bare messages and the window-event wrapper and sets the window cursor, so UI picking and buttons respond
+- [x] Move, press and release happen on separate frames; input is injected after the message swap and before input processing
+- [x] A custom Appium command waits N frames before replying
+- [x] Per-request script state is isolated so concurrent requests do not interfere
+- [x] Example game button click increments a visible counter, verified by a test

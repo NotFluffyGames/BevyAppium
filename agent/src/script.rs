@@ -1,6 +1,9 @@
 //! The script method: a list of steps run one per frame; the reply is sent only
 //! once the script has finished (reply-after-frame).
+use bevy::input::ButtonState;
+use bevy::input::mouse::MouseButtonInput;
 use bevy::prelude::*;
+use bevy::window::{CursorMoved, PrimaryWindow, WindowEvent};
 use bevy::remote::{BrpError, BrpResult, RemotePlugin, http::RemoteHttpPlugin};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -21,6 +24,8 @@ pub fn build(app: &mut App, port: u16) {
 struct Job {
     step: usize,
     waited: u32,
+    /// Phase within a multi-frame step (click: move, press, release, settle).
+    phase: u32,
     out: Vec<Value>,
 }
 
@@ -110,6 +115,8 @@ fn run_step(world: &mut World, job: &mut Job, step: &Value) -> bool {
                 None => error("no such element", format!("element {id} has no text")),
             },
         });
+    } else if let Some(id) = step["click"].as_str() {
+        return click(world, job, id);
     } else if let Some(n) = step["wait"].as_u64() {
         job.waited += 1;
         if u64::from(job.waited) <= n {
@@ -120,4 +127,59 @@ fn run_step(world: &mut World, job: &mut Job, step: &Value) -> bool {
         job.out.push(error("unknown command", format!("unknown step: {step}")));
     }
     true
+}
+
+/// Frames to let the game react to a click before replying, so the next command sees its effect.
+const SETTLE_FRAMES: u32 = 2;
+
+/// A click is move, press, release on successive frames, then a short settle.
+fn click(world: &mut World, job: &mut Job, id: &str) -> bool {
+    let entity = match element(world, id) {
+        Ok(e) => e,
+        Err(e) => {
+            job.out.push(e);
+            return true;
+        }
+    };
+    let Some(pos) = ui_center(world, entity) else {
+        job.out.push(error("element not interactable", format!("element {id} is not a UI node")));
+        return true;
+    };
+    let window = world.query_filtered::<Entity, With<PrimaryWindow>>().iter(world).next();
+    let Some(window) = window else {
+        job.out.push(error("unknown error", "no primary window"));
+        return true;
+    };
+    match job.phase {
+        0 => {
+            if let Some(mut w) = world.get_mut::<Window>(window) {
+                w.set_cursor_position(Some(pos));
+            }
+            let ev = CursorMoved { window, position: pos, delta: None };
+            world.write_message(ev.clone());
+            world.write_message(WindowEvent::CursorMoved(ev));
+        }
+        1 | 2 => {
+            let state = if job.phase == 1 { ButtonState::Pressed } else { ButtonState::Released };
+            let ev = MouseButtonInput { button: MouseButton::Left, state, window };
+            world.write_message(ev.clone());
+            world.write_message(WindowEvent::MouseButtonInput(ev));
+        }
+        p if p < 3 + SETTLE_FRAMES => {}
+        _ => {
+            job.phase = 0;
+            job.out.push(json!({ "ok": true }));
+            return true;
+        }
+    }
+    job.phase += 1;
+    false
+}
+
+/// Centre of a UI node in logical window coordinates.
+fn ui_center(world: &World, e: Entity) -> Option<Vec2> {
+    let node = world.get::<ComputedNode>(e)?;
+    let t = world.get::<UiGlobalTransform>(e)?;
+    let s = node.inverse_scale_factor();
+    Some(Vec2::new(t.translation.x * s, t.translation.y * s))
 }
