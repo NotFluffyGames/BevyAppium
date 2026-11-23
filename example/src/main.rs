@@ -1,5 +1,6 @@
 //! Example game: a button and a counter. Test subject for BevyAppium.
 use bevy::prelude::*;
+use bevy::ui::InteractionDisabled;
 use bevy::ui_widgets::{Activate, Button};
 use bevyappium_agent::BevyAppiumPlugin;
 
@@ -18,6 +19,10 @@ pub struct Marker;
 
 #[derive(Component)]
 struct Fleeting(Timer);
+
+/// Deliberately not registered for reflection: attributes on it read as null.
+#[derive(Component)]
+struct Secret(#[allow(dead_code)] u32);
 
 fn main() {
     App::new()
@@ -38,6 +43,8 @@ fn setup(mut commands: Commands) {
         commands.spawn((Name::new("Enemy"), Enemy));
     }
     commands.spawn(Marker);
+    commands.spawn((Name::new("Player"), Transform::from_xyz(10.0, 20.0, 0.0), Visibility::Visible, Secret(7)));
+    commands.spawn((Name::new("Hidden"), Visibility::Hidden));
     commands.spawn((Name::new("Fleeting"), Text::new("fleeting"), Fleeting(Timer::from_seconds(2.0, TimerMode::Once))));
     commands
         .spawn(Node {
@@ -59,6 +66,13 @@ fn setup(mut commands: Commands) {
             .with_children(|b| {
                 b.spawn(Text::new("Click me"));
             });
+            p.spawn((
+                Name::new("DisabledBtn"),
+                Button,
+                InteractionDisabled,
+                Node { width: px(160), height: px(30), ..default() },
+            ));
+            p.spawn((Name::new("Collapsed"), Node { width: px(0), height: px(0), ..default() }));
             p.spawn((Name::new("Counter"), Counter(0), Text::new("count: 0")));
         });
 }

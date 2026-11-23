@@ -15,6 +15,13 @@ describe('UI click and frame sync', () => {
     expect(await browser.$('~Counter').getText()).toBe('count: 3');
   });
 
+  it('each click runs exactly once, however many are issued', async () => {
+    const before = Number((await browser.$('~Counter').getText()).replace('count: ', ''));
+    const button = await browser.$('~ClickBtn');
+    for (let i = 0; i < 15; i++) await button.click();
+    expect(await browser.$('~Counter').getText()).toBe(`count: ${before + 15}`);
+  });
+
   it('waitFrames replies after the requested frames have run', async () => {
     const t0 = Date.now();
     await browser.execute('bevy: waitFrames', { frames: 5 });

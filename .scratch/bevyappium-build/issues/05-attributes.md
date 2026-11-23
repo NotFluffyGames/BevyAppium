@@ -1,6 +1,6 @@
 ---
 label: ready-for-agent
-status: open
+status: done
 spec: ../../bevyappium-driver/spec.md
 ---
 # 05: Attributes, displayed, enabled
@@ -11,8 +11,8 @@ spec: ../../bevyappium-driver/spec.md
 
 **Status:** ready-for-agent
 
-- [ ] Attribute by reflection path (for example a transform coordinate, a UI node width) returns a string
-- [ ] Special attributes `text`, `visible` and `enabled` work
-- [ ] An attribute on an unregistered component returns null
-- [ ] Displayed means inherited visibility is visible and, for UI, non-zero size
-- [ ] Enabled means no interaction-disabled marker
+- [x] Attribute by reflection path (for example a transform coordinate, a UI node width) returns a string
+- [x] Special attributes `text`, `visible` and `enabled` work
+- [x] An attribute on an unregistered component returns null
+- [x] Displayed means inherited visibility is visible and, for UI, non-zero size
+- [x] Enabled means no interaction-disabled marker

@@ -84,6 +84,22 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
     throwAgentError(r);
   }
 
+  async getAttribute(name: string, elementId: string): Promise<string | null> {
+    const [r] = await this.client().run([{ attr: { element: elementId, name } }]);
+    throwAgentError(r);
+    return (r.value as string | null) ?? null;
+  }
+
+  async elementDisplayed(elementId: string): Promise<boolean> {
+    const [r] = await this.client().run([{ displayed: elementId }]);
+    throwAgentError(r);
+    return r.value as boolean;
+  }
+
+  async elementEnabled(elementId: string): Promise<boolean> {
+    return (await this.getAttribute('enabled', elementId)) === 'true';
+  }
+
   /** WebDriver "Execute Script": only `bevy: ...` extension commands are supported. */
   async execute(script: string, args?: unknown[]): Promise<unknown> {
     if (!script.startsWith('bevy:')) {

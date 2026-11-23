@@ -3,6 +3,7 @@
 use bevy::input::ButtonState;
 use bevy::input::mouse::MouseButtonInput;
 use bevy::prelude::*;
+use bevy::reflect::GetPath;
 use bevy::window::{CursorMoved, PrimaryWindow, WindowEvent};
 use bevy::remote::{BrpError, BrpResult, RemotePlugin, http::RemoteHttpPlugin};
 use serde_json::{Value, json};
@@ -35,6 +36,9 @@ struct Job {
 struct Jobs {
     running: HashMap<u64, (Vec<Value>, Job)>,
     done: HashMap<u64, Value>,
+    /// Every id ever registered. BRP may call the handler again after the reply was
+    /// sent; without this a finished script would be registered, and run, a second time.
+    seen: std::collections::HashSet<u64>,
 }
 
 fn run_method(In(params): In<Option<Value>>, mut jobs: ResMut<Jobs>) -> BrpResult<Option<Value>> {
@@ -43,7 +47,7 @@ fn run_method(In(params): In<Option<Value>>, mut jobs: ResMut<Jobs>) -> BrpResul
     if let Some(done) = jobs.done.remove(&id) {
         return Ok(Some(done));
     }
-    if !jobs.running.contains_key(&id) {
+    if jobs.seen.insert(id) {
         let steps = p["steps"].as_array().cloned().unwrap_or_default();
         jobs.running.insert(id, (steps, Job::default()));
     }
@@ -115,6 +119,17 @@ fn run_step(world: &mut World, job: &mut Job, step: &Value) -> bool {
                 None => error("no such element", format!("element {id} has no text")),
             },
         });
+    } else if let Some(a) = step.get("attr") {
+        let (id, name) = (a["element"].as_str().unwrap_or(""), a["name"].as_str().unwrap_or(""));
+        job.out.push(match element(world, id) {
+            Err(e) => e,
+            Ok(e) => json!({ "value": attribute(world, e, name) }),
+        });
+    } else if let Some(id) = step["displayed"].as_str() {
+        job.out.push(match element(world, id) {
+            Err(e) => e,
+            Ok(e) => json!({ "value": displayed(world, e) }),
+        });
     } else if let Some(id) = step["click"].as_str() {
         return click(world, job, id);
     } else if let Some(n) = step["wait"].as_u64() {
@@ -182,4 +197,41 @@ fn ui_center(world: &World, e: Entity) -> Option<Vec2> {
     let t = world.get::<UiGlobalTransform>(e)?;
     let s = node.inverse_scale_factor();
     Some(Vec2::new(t.translation.x * s, t.translation.y * s))
+}
+
+/// Visible (inherited) and, for UI nodes, non-zero size.
+fn displayed(world: &World, e: Entity) -> bool {
+    let visible = world.get::<InheritedVisibility>(e).is_some_and(|v| v.get());
+    let sized = world.get::<ComputedNode>(e).is_none_or(|n| n.size().x > 0.0 && n.size().y > 0.0);
+    visible && sized
+}
+
+/// Attribute by name: `text`, `visible`, `enabled`, else a reflection path
+/// `Component.field.sub` (null when not exposed through reflection).
+fn attribute(world: &World, e: Entity, name: &str) -> Option<String> {
+    match name {
+        "text" => return world.get::<Text>(e).map(|t| t.0.clone()),
+        "visible" => return Some(world.get::<InheritedVisibility>(e).is_some_and(|v| v.get()).to_string()),
+        "enabled" => return Some((!world.entity(e).contains::<bevy::ui::InteractionDisabled>()).to_string()),
+        _ => {}
+    }
+    let (component, path) = name.split_once('.').map_or((name, ""), |(c, p)| (c, p));
+    let registry = world.resource::<AppTypeRegistry>().read();
+    let reg = registry.get_with_type_path(component).or_else(|| registry.get_with_short_type_path(component))?;
+    let reflected = reg.data::<ReflectComponent>()?.reflect(world.entity(e))?;
+    let value: &dyn PartialReflect = if path.is_empty() { reflected.as_partial_reflect() } else { reflected.reflect_path(path).ok()? };
+    Some(format_value(value))
+}
+
+fn format_value(v: &dyn PartialReflect) -> String {
+    if let Some(s) = v.try_downcast_ref::<String>() {
+        return s.clone();
+    }
+    if let Some(f) = v.try_downcast_ref::<f32>() {
+        return f.to_string();
+    }
+    if let Some(f) = v.try_downcast_ref::<f64>() {
+        return f.to_string();
+    }
+    format!("{v:?}")
 }
