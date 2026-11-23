@@ -9,6 +9,8 @@ use bevy::prelude::*;
 
 #[cfg(feature = "enabled")]
 mod script;
+#[cfg(feature = "enabled")]
+mod transport;
 
 /// Add this plugin to a game to make it drivable. Inert unless the `enabled`
 /// feature is on.

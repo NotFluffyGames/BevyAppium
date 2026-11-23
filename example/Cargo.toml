@@ -10,5 +10,5 @@ publish.workspace = true
 bevyappium = ["bevyappium-agent/enabled"]
 
 [dependencies]
-bevy = { workspace = true, features = ["ui", "x11", "png"] }
+bevy = { workspace = true, features = ["ui", "2d", "x11", "png"] }
 bevyappium-agent = { path = "../agent" }

@@ -1,13 +1,16 @@
 import { BaseDriver, errors } from 'appium/driver.js';
 import type { Constraints } from '@appium/types';
-import { AgentClient, type StepResult } from './agent-client.js';
-import { GameProcess, freePort } from './game-process.js';
+import { AgentClient, AgentUnreachableError, type StepResult, type Step } from './agent-client.js';
+import { GameProcess, freePort, waitForAgent } from './game-process.js';
 
 const W3C_ELEMENT = 'element-6066-11e4-a52e-4f735466cecf';
 
 const CONSTRAINTS = {
   app: { isString: true },
+  /** Launch mode: fixed Agent port (default: a free one). Attach mode: the port of a running game. */
   agentPort: { isNumber: true },
+  /** How long to wait for the Agent to open its port, in milliseconds. */
+  agentStartupTimeout: { isNumber: true },
 } as const satisfies Constraints;
 
 type BevyConstraints = typeof CONSTRAINTS;
@@ -43,14 +46,21 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
   override async createSession(...args: Parameters<BaseDriver<BevyConstraints>['createSession']>) {
     const [sid, caps] = await super.createSession(...args);
     try {
-      const { app } = this.opts as { app?: string };
-      if (!app) throw new errors.SessionNotCreatedError('The `appium:app` capability (path to the game binary) is required');
-      const port = await freePort();
-      this.game = new GameProcess(app, port);
-      this.agent = await this.game.start();
+      const { app, agentPort, agentStartupTimeout } = this.opts as { app?: string; agentPort?: number; agentStartupTimeout?: number };
+      const timeout = agentStartupTimeout ?? 60000;
+      if (app) {
+        // Launch mode: the Driver starts the game and owns its lifetime.
+        this.game = new GameProcess(app, agentPort ?? await freePort());
+        this.agent = await this.game.start(timeout);
+      } else if (agentPort) {
+        // Attach mode: the game is already running; the Driver never stops it.
+        this.agent = await waitForAgent(agentPort, timeout);
+      } else {
+        throw new Error('Set `appium:app` (path to the game binary) to launch a game, or `appium:agentPort` to attach to a running one');
+      }
     } catch (e) {
       await this.deleteSession(sid);
-      throw e;
+      throw new errors.SessionNotCreatedError((e as Error).message);
     }
     return [sid, caps] as [string, typeof caps];
   }
@@ -67,7 +77,7 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
     if (!using) {
       throw new errors.InvalidSelectorError(`Unsupported locator strategy '${strategy}'. Supported: ${this.locatorStrategies.join(', ')}`);
     }
-    const [r] = await this.client().run([{ find: { using, value: selector } }]);
+    const [r] = await this.run([{ find: { using, value: selector } }]);
     throwAgentError(r);
     const els = (r.elements as string[]).map(id => ({ ELEMENT: id, [W3C_ELEMENT]: id }));
     if (mult) return els as any;
@@ -76,24 +86,24 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
   }
 
   async getText(elementId: string): Promise<string> {
-    const [r] = await this.client().run([{ text: elementId }]);
+    const [r] = await this.run([{ text: elementId }]);
     throwAgentError(r);
     return r.text as string;
   }
 
   async click(elementId: string): Promise<void> {
-    const [r] = await this.client().run([{ click: elementId }]);
+    const [r] = await this.run([{ click: elementId }]);
     throwAgentError(r);
   }
 
   async getAttribute(name: string, elementId: string): Promise<string | null> {
-    const [r] = await this.client().run([{ attr: { element: elementId, name } }]);
+    const [r] = await this.run([{ attr: { element: elementId, name } }]);
     throwAgentError(r);
     return (r.value as string | null) ?? null;
   }
 
   async elementDisplayed(elementId: string): Promise<boolean> {
-    const [r] = await this.client().run([{ displayed: elementId }]);
+    const [r] = await this.run([{ displayed: elementId }]);
     throwAgentError(r);
     return r.value as boolean;
   }
@@ -104,18 +114,18 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
 
   /** Send keys: the text is typed into the game (the game has no element focus concept here). */
   async setValue(text: string | string[], elementId: string): Promise<void> {
-    const [r] = await this.client().run([{ keys: Array.isArray(text) ? text.join('') : text }]);
+    const [r] = await this.run([{ keys: Array.isArray(text) ? text.join('') : text }]);
     throwAgentError(r);
   }
 
   async getScreenshot(): Promise<string> {
-    const [r] = await this.client().run([{ screenshot: true }]);
+    const [r] = await this.run([{ screenshot: true }]);
     throwAgentError(r);
     return r.png as string;
   }
 
   async getPageSource(): Promise<string> {
-    const [r] = await this.client().run([{ source: true }]);
+    const [r] = await this.run([{ source: true }]);
     throwAgentError(r);
     return r.xml as string;
   }
@@ -130,11 +140,20 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
 
   /** Custom command `bevy: waitFrames`: reply after N game frames have run. */
   async waitFrames(frames: number): Promise<void> {
-    await this.client().run([{ wait: frames }]);
+    await this.run([{ wait: frames }]);
   }
 
-  private client(): AgentClient {
+  /** Run steps in the game; if the Agent cannot be reached, say whether the game died. */
+  private async run(steps: Step[]): Promise<StepResult[]> {
     if (!this.agent) throw new errors.NoSuchDriverError('No game session');
-    return this.agent;
+    try {
+      return await this.agent.run(steps);
+    } catch (e) {
+      if (e instanceof AgentUnreachableError) {
+        const why = this.game?.problem();
+        throw new errors.UnknownError(why ? `${why}; the session is no longer usable` : e.message);
+      }
+      throw e;
+    }
   }
 }

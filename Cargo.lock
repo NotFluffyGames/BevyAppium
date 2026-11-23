@@ -1988,6 +1988,7 @@ dependencies = [
 name = "bevyappium-agent"
 version = "0.1.0"
 dependencies = [
+ "async-channel",
  "base64",
  "bevy",
  "image",

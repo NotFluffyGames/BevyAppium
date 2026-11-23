@@ -1,6 +1,6 @@
 ---
 label: ready-for-agent
-status: open
+status: done
 spec: ../../bevyappium-driver/spec.md
 ---
 # 06: Click on world entities
@@ -11,7 +11,7 @@ spec: ../../bevyappium-driver/spec.md
 
 **Status:** ready-for-agent
 
-- [ ] Click on a world entity injects a pointer at its projected screen position and the game reacts
-- [ ] A click whose projection is off-screen fails with `element not interactable`
-- [ ] Example game includes a clickable world entity covered by a test
-- [ ] Occlusion detection is explicitly not included
+- [x] Click on a world entity injects a pointer at its projected screen position and the game reacts
+- [x] A click whose projection is off-screen fails with `element not interactable`
+- [x] Example game includes a clickable world entity covered by a test
+- [x] Occlusion detection is explicitly not included

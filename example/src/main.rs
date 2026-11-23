@@ -22,6 +22,9 @@ pub struct Marker;
 #[derive(Component)]
 struct Fleeting(Timer);
 
+#[derive(Component)]
+struct CoinCount(u32);
+
 /// Deliberately not registered for reflection: attributes on it read as null.
 #[derive(Component)]
 struct Secret(#[allow(dead_code)] u32);
@@ -32,6 +35,7 @@ fn main() {
             primary_window: Some(Window { resolution: (400, 300).into(), ..default() }),
             ..default()
         }))
+        .insert_resource(SpritePickingSettings { picking_mode: SpritePickingMode::BoundingBox, ..default() })
         .add_plugins(BevyAppiumPlugin::default())
         .add_systems(Startup, setup)
         .add_systems(Update, (despawn_fleeting, log_keys))
@@ -45,11 +49,22 @@ fn setup(mut commands: Commands) {
         commands.spawn((Name::new("Enemy"), Enemy));
     }
     commands.spawn(Marker);
+    // World entities (2D sprites) that react to pointer clicks. `Coin` is on screen,
+    // `FarAway` is far outside the camera view.
+    commands
+        .spawn((Name::new("Coin"), Pickable::default(), Sprite::from_color(Color::srgb(0.9, 0.8, 0.1), Vec2::splat(40.0)), Transform::from_xyz(140.0, -100.0, 1.0)))
+        .observe(|_: On<PointerClick>, mut c: Query<(&mut CoinCount, &mut Text)>| {
+            for (mut n, mut t) in &mut c {
+                n.0 += 1;
+                t.0 = format!("coins: {}", n.0);
+            }
+        });
+    commands.spawn((Name::new("FarAway"), Sprite::from_color(Color::WHITE, Vec2::splat(40.0)), Transform::from_xyz(5000.0, 5000.0, 1.0)));
     commands.spawn((Name::new("Player"), Transform::from_xyz(10.0, 20.0, 0.0), Visibility::Visible, Secret(7)));
     commands.spawn((Name::new("Hidden"), Visibility::Hidden));
     commands.spawn((Name::new("Fleeting"), Text::new("fleeting"), Fleeting(Timer::from_seconds(2.0, TimerMode::Once))));
     commands
-        .spawn(Node {
+        .spawn((Pickable::IGNORE, Node {
             width: percent(100),
             height: percent(100),
             flex_direction: FlexDirection::Column,
@@ -57,7 +72,7 @@ fn setup(mut commands: Commands) {
             align_items: AlignItems::Center,
             row_gap: px(20),
             ..default()
-        })
+        }))
         .with_children(|p| {
             p.spawn((
                 Name::new("ClickBtn"),
@@ -75,6 +90,7 @@ fn setup(mut commands: Commands) {
                 Node { width: px(160), height: px(30), ..default() },
             ));
             p.spawn((Name::new("Collapsed"), Node { width: px(0), height: px(0), ..default() }));
+            p.spawn((Name::new("CoinCount"), CoinCount(0), Text::new("coins: 0")));
             p.spawn((Name::new("KeyLog"), Text::new("keys: ")));
             p.spawn((Name::new("Counter"), Counter(0), Text::new("count: 0")));
         });

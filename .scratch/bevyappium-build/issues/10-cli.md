@@ -1,6 +1,6 @@
 ---
 label: ready-for-agent
-status: open
+status: done
 spec: ../../bevyappium-driver/spec.md
 ---
 # 10: CLI: inspect, run, doctor
@@ -11,7 +11,7 @@ spec: ../../bevyappium-driver/spec.md
 
 **Status:** ready-for-agent
 
-- [ ] `inspect` launches or attaches to a game and shows its element tree interactively
-- [ ] `run` starts a server, runs a test suite against a game and prints results
-- [ ] `doctor` checks the Node version, display, Vulkan, Rust toolchain and system libraries and reports fixes
-- [ ] Each subcommand is covered by a test or an executed example
+- [x] `inspect` launches or attaches to a game and shows its element tree interactively
+- [x] `run` starts a server, runs a test suite against a game and prints results
+- [x] `doctor` checks the Node version, display, Vulkan, Rust toolchain and system libraries and reports fixes
+- [x] Each subcommand is covered by a test or an executed example

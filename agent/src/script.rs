@@ -7,18 +7,19 @@ use bevy::prelude::*;
 use bevy::reflect::GetPath;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::window::{CursorMoved, PrimaryWindow, WindowEvent};
-use bevy::remote::{BrpError, BrpResult, RemotePlugin, http::RemoteHttpPlugin};
+use bevy::remote::{BrpError, BrpResult, RemotePlugin};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub const METHOD: &str = "bevyappium.run";
 
 pub fn build(app: &mut App, port: u16) {
-    app.add_plugins((
-        RemotePlugin::default().with_watching_method_main(METHOD, run_method),
-        RemoteHttpPlugin::default().with_port(port),
-    ))
-    .init_resource::<Jobs>()
+    // BRP supplies the method dispatch. Its stock HTTP plugin is not used: it also opens a
+    // second (render-world) port that cannot be turned off, so `transport` serves the one
+    // BRP mailbox on a single loopback port instead.
+    app.add_plugins(RemotePlugin::default().with_watching_method_main(METHOD, run_method))
+        .add_systems(PostStartup, move |sender: Res<bevy::remote::BrpSender>| crate::transport::serve(port, (**sender).clone()))
+        .init_resource::<Jobs>()
     // Steps run in `First`, after the message buffers swap and before input processing.
     .add_systems(First, drive_jobs.after(bevy::ecs::message::MessageUpdateSystems));
 }
@@ -166,9 +167,12 @@ fn click(world: &mut World, job: &mut Job, id: &str) -> bool {
             return true;
         }
     };
-    let Some(pos) = ui_center(world, entity) else {
-        job.out.push(error("element not interactable", format!("element {id} is not a UI node")));
-        return true;
+    let pos = match click_position(world, entity) {
+        Ok(p) => p,
+        Err(why) => {
+            job.out.push(error("element not interactable", format!("element {id}: {why}")));
+            return true;
+        }
     };
     let window = world.query_filtered::<Entity, With<PrimaryWindow>>().iter(world).next();
     let Some(window) = window else {
@@ -373,4 +377,33 @@ fn keys(world: &mut World, job: &mut Job, text: &str) -> bool {
     }
     job.phase += 1;
     false
+}
+
+/// Where to click an element: a UI node's layout centre, or a world entity's position
+/// projected through a camera. Fails when it has no screen position or projects off-screen.
+fn click_position(world: &mut World, e: Entity) -> Result<Vec2, &'static str> {
+    if let Some(pos) = ui_center(world, e) {
+        return Ok(pos);
+    }
+    let world_pos = world.get::<GlobalTransform>(e).ok_or("it has no position and is not a UI node")?.translation();
+    let mut cameras = world.query::<(&Camera, &GlobalTransform)>();
+    let mut on_screen = None;
+    let mut any = false;
+    for (camera, transform) in cameras.iter(world) {
+        if !camera.is_active {
+            continue;
+        }
+        any = true;
+        let (Ok(p), Some(size)) = (camera.world_to_viewport(transform, world_pos), camera.logical_viewport_size()) else {
+            continue;
+        };
+        if p.x >= 0.0 && p.y >= 0.0 && p.x <= size.x && p.y <= size.y {
+            on_screen = Some(p);
+            break;
+        }
+    }
+    if !any {
+        return Err("there is no active camera");
+    }
+    on_screen.ok_or("it is outside the camera view")
 }

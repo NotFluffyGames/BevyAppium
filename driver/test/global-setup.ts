@@ -1,7 +1,7 @@
 // Seam 1 harness: build the example game, start an Appium server (under a virtual display,
 // software Vulkan) with the Driver installed into an isolated APPIUM_HOME.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -12,6 +12,7 @@ const repoDir = path.resolve(driverDir, '..');
 const appiumBin = path.join(driverDir, 'node_modules/appium/index.js');
 const PORT = 4723 + Math.floor(Math.random() * 500);
 let server: ChildProcess | undefined;
+let xvfb: ChildProcess | undefined;
 
 function run(cmd: string, args: string[], env: NodeJS.ProcessEnv = process.env, cwd = repoDir) {
   const r = spawnSync(cmd, args, { cwd, env, stdio: 'inherit' });
@@ -24,10 +25,16 @@ export async function setup(project: { provide: (k: string, v: unknown) => void 
   const home = mkdtempSync(path.join(tmpdir(), 'bevyappium-home-'));
   const env = { ...process.env, APPIUM_HOME: home };
   run('node', [appiumBin, 'driver', 'install', '--source=local', driverDir], env);
-  server = spawn('xvfb-run', ['-a', '-s', '-screen 0 800x600x24', 'node', appiumBin, 'server', '--port', String(PORT), '--log-level', 'warn'], {
-    cwd: repoDir, stdio: 'inherit',
-    env: { ...env, VK_ICD_FILENAMES: process.env.VK_ICD_FILENAMES ?? '/usr/share/vulkan/icd.d/lvp_icd.json', WGPU_BACKEND: 'vulkan' },
+  // One virtual display shared by the Appium server (and the games it launches) and by tests that start their own game.
+  const n = 200 + Math.floor(Math.random() * 700);
+  const display = `:${n}`;
+  xvfb = spawn('Xvfb', [display, '-screen', '0', '800x600x24'], { stdio: 'ignore' });
+  for (let i = 0; i < 60 && !existsSync(`/tmp/.X11-unix/X${n}`); i++) await new Promise(r => setTimeout(r, 100));
+  const gameEnv = { DISPLAY: display, VK_ICD_FILENAMES: process.env.VK_ICD_FILENAMES ?? '/usr/share/vulkan/icd.d/lvp_icd.json', WGPU_BACKEND: 'vulkan' };
+  server = spawn('node', [appiumBin, 'server', '--port', String(PORT), '--log-level', 'warn'], {
+    cwd: repoDir, stdio: 'inherit', env: { ...env, ...gameEnv },
   });
+  project.provide('gameEnv', gameEnv);
   for (let i = 0; i < 120; i++) {
     try { if ((await fetch(`http://127.0.0.1:${PORT}/status`)).ok) break; } catch { /* retry */ }
     await new Promise(r => setTimeout(r, 500));
@@ -38,9 +45,10 @@ export async function setup(project: { provide: (k: string, v: unknown) => void 
 
 export async function teardown() {
   server?.kill('SIGTERM');
+  xvfb?.kill('SIGTERM');
   spawnSync('pkill', ['-f', 'bevyappium-example']);
 }
 
 declare module 'vitest' {
-  export interface ProvidedContext { appiumPort: number; gameBinary: string }
+  export interface ProvidedContext { appiumPort: number; gameBinary: string; gameEnv: Record<string, string> }
 }

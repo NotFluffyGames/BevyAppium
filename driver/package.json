@@ -5,8 +5,12 @@
   "type": "module",
   "main": "build/src/index.js",
   "types": "build/src/index.d.ts",
-  "files": ["build/src"],
-  "engines": { "node": "^22.22.2 || ^24.15.0 || >=26.0.0" },
+  "files": [
+    "build/src"
+  ],
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -15,15 +19,24 @@
   "appium": {
     "driverName": "bevy",
     "automationName": "Bevy",
-    "platformNames": ["Linux", "Mac", "Windows"],
+    "platformNames": [
+      "Linux",
+      "Mac",
+      "Windows"
+    ],
     "mainClass": "BevyDriver"
   },
-  "peerDependencies": { "appium": "^4.0.0" },
+  "peerDependencies": {
+    "appium": "^4.0.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "appium": "4.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0",
     "webdriverio": "10.2.0"
+  },
+  "bin": {
+    "bevyappium": "build/src/cli.js"
   }
 }

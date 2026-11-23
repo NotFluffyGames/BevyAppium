@@ -8,10 +8,11 @@ publish.workspace = true
 [features]
 # Opt-in. Off by default: the plugin is then an empty no-op and none of the
 # dependencies below are compiled in.
-enabled = ["bevy/bevy_remote", "dep:serde_json", "dep:image", "dep:base64"]
+enabled = ["bevy/bevy_remote", "dep:serde_json", "dep:image", "dep:base64", "dep:async-channel"]
 
 [dependencies]
 bevy = { workspace = true, features = ["ui"] }
 serde_json = { version = "1", optional = true }
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 base64 = { version = "0.22", optional = true }
+async-channel = { version = "2", optional = true }
