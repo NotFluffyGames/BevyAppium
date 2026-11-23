@@ -1,0 +1,47 @@
+# Seam 2: a release build without the Agent feature must contain no trace of the Agent.
+name: stripping
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: stripping-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The real check: build the example WITHOUT the Agent feature (release profile) and fail on any trace.
+  clean-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bevy's Linux build libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libx11-dev pkg-config
+      # Bevy 0.20.1 needs Rust 1.97.1 or later; `stable` is newer.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: stripping-clean
+      - name: Check the release build has no Agent traces
+        run: scripts/check-stripped.sh
+
+  # Proves the check itself still works: with the Agent ON it must find traces.
+  # If this ever passes while finding nothing, the clean check above means nothing.
+  detector-self-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bevy's Linux build libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libx11-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: stripping-with-agent
+      - name: Check the detector finds an enabled Agent
+        run: scripts/check-stripped.sh --with-agent

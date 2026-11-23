@@ -110,6 +110,8 @@ none of its dependencies are compiled in. `scripts/check-stripped.sh` builds the
 feature and fails if the dependency tree or the binary still shows Agent traces (best effort on the
 binary strings; it also catches another crate re-enabling Bevy's `bevy_remote` feature). Run
 `scripts/check-stripped.sh --with-agent` to prove the check detects an enabled Agent.
+Both run in CI (`.github/workflows/stripping.yml`) on every pull request and push to `main`: a release build
+without the feature must come out clean, and the detector must still find traces when the Agent is on.
 
 ## Limitations
 
