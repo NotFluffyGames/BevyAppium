@@ -1,6 +1,7 @@
 //! The script method: a list of steps run one per frame; the reply is sent only
 //! once the script has finished (reply-after-frame).
 use bevy::input::ButtonState;
+use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::MouseButtonInput;
 use bevy::prelude::*;
 use bevy::reflect::GetPath;
@@ -137,6 +138,8 @@ fn run_step(world: &mut World, jobs: &mut Jobs, id: u64, job: &mut Job, step: &V
             Err(e) => e,
             Ok(e) => json!({ "value": displayed(world, e) }),
         });
+    } else if let Some(text) = step["keys"].as_str() {
+        return keys(world, job, text);
     } else if let Some(id) = step["click"].as_str() {
         return click(world, job, id);
     } else if let Some(n) = step["wait"].as_u64() {
@@ -313,4 +316,61 @@ fn page_source(world: &World) -> String {
     }
     out.push_str("</World>");
     out
+}
+
+const LETTERS: [KeyCode; 26] = [
+    KeyCode::KeyA, KeyCode::KeyB, KeyCode::KeyC, KeyCode::KeyD, KeyCode::KeyE, KeyCode::KeyF, KeyCode::KeyG,
+    KeyCode::KeyH, KeyCode::KeyI, KeyCode::KeyJ, KeyCode::KeyK, KeyCode::KeyL, KeyCode::KeyM, KeyCode::KeyN,
+    KeyCode::KeyO, KeyCode::KeyP, KeyCode::KeyQ, KeyCode::KeyR, KeyCode::KeyS, KeyCode::KeyT, KeyCode::KeyU,
+    KeyCode::KeyV, KeyCode::KeyW, KeyCode::KeyX, KeyCode::KeyY, KeyCode::KeyZ,
+];
+const DIGITS: [KeyCode; 10] = [
+    KeyCode::Digit0, KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4,
+    KeyCode::Digit5, KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8, KeyCode::Digit9,
+];
+
+/// Map one character (or WebDriver special-key code point) to a physical and logical key.
+fn key_for(c: char) -> Option<(KeyCode, Key)> {
+    Some(match c {
+        'a'..='z' => (LETTERS[c as usize - 'a' as usize], Key::Character(c.to_string().into())),
+        'A'..='Z' => (LETTERS[c as usize - 'A' as usize], Key::Character(c.to_string().into())),
+        '0'..='9' => (DIGITS[c as usize - '0' as usize], Key::Character(c.to_string().into())),
+        ' ' => (KeyCode::Space, Key::Space),
+        '\u{E003}' => (KeyCode::Backspace, Key::Backspace),
+        '\u{E004}' => (KeyCode::Tab, Key::Tab),
+        '\u{E007}' | '\n' => (KeyCode::Enter, Key::Enter),
+        '\u{E00C}' => (KeyCode::Escape, Key::Escape),
+        _ => return None,
+    })
+}
+
+/// Type text: per character a press frame then a release frame, then a short settle.
+fn keys(world: &mut World, job: &mut Job, text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    let mapped: Option<Vec<(KeyCode, Key)>> = chars.iter().map(|c| key_for(*c)).collect();
+    let Some(mapped) = mapped else {
+        let bad = chars.iter().find(|c| key_for(**c).is_none()).copied().unwrap_or('?');
+        job.out.push(error("invalid argument", format!("unsupported character {bad:?}")));
+        return true;
+    };
+    let window = world.query_filtered::<Entity, With<PrimaryWindow>>().iter(world).next();
+    let Some(window) = window else {
+        job.out.push(error("unknown error", "no primary window"));
+        return true;
+    };
+    let typing_frames = 2 * mapped.len() as u32;
+    let phase = job.phase;
+    if phase < typing_frames {
+        let (key_code, logical_key) = mapped[(phase / 2) as usize].clone();
+        let state = if phase % 2 == 0 { ButtonState::Pressed } else { ButtonState::Released };
+        let ev = KeyboardInput { key_code, logical_key, state, text: None, repeat: false, window };
+        world.write_message(ev.clone());
+        world.write_message(WindowEvent::KeyboardInput(ev));
+    } else if phase >= typing_frames + SETTLE_FRAMES {
+        job.phase = 0;
+        job.out.push(json!({ "ok": true }));
+        return true;
+    }
+    job.phase += 1;
+    false
 }

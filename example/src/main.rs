@@ -1,4 +1,6 @@
 //! Example game: a button and a counter. Test subject for BevyAppium.
+use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::ui::InteractionDisabled;
 use bevy::ui_widgets::{Activate, Button};
@@ -32,7 +34,7 @@ fn main() {
         }))
         .add_plugins(BevyAppiumPlugin::default())
         .add_systems(Startup, setup)
-        .add_systems(Update, despawn_fleeting)
+        .add_systems(Update, (despawn_fleeting, log_keys))
         .add_observer(on_activate)
         .run();
 }
@@ -73,6 +75,7 @@ fn setup(mut commands: Commands) {
                 Node { width: px(160), height: px(30), ..default() },
             ));
             p.spawn((Name::new("Collapsed"), Node { width: px(0), height: px(0), ..default() }));
+            p.spawn((Name::new("KeyLog"), Text::new("keys: ")));
             p.spawn((Name::new("Counter"), Counter(0), Text::new("count: 0")));
         });
 }
@@ -88,6 +91,26 @@ fn despawn_fleeting(mut commands: Commands, time: Res<Time>, mut q: Query<(Entit
     for (e, mut f) in &mut q {
         if f.0.tick(time.delta()).is_finished() {
             commands.entity(e).despawn();
+        }
+    }
+}
+
+/// Appends typed characters to the `KeyLog` text, so tests can observe keyboard input.
+fn log_keys(mut keys: MessageReader<KeyboardInput>, mut log: Query<(&Name, &mut Text)>) {
+    for k in keys.read() {
+        if k.state != ButtonState::Pressed {
+            continue;
+        }
+        let typed = match &k.logical_key {
+            Key::Character(c) => c.to_string(),
+            Key::Space => " ".to_string(),
+            Key::Enter => "\n".to_string(),
+            _ => continue,
+        };
+        for (name, mut text) in &mut log {
+            if name.as_str() == "KeyLog" {
+                text.0.push_str(&typed);
+            }
         }
     }
 }

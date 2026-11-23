@@ -1,6 +1,6 @@
 ---
 label: ready-for-agent
-status: open
+status: done
 spec: ../../bevyappium-driver/spec.md
 ---
 # 08: Send keys
@@ -11,6 +11,6 @@ spec: ../../bevyappium-driver/spec.md
 
 **Status:** ready-for-agent
 
-- [ ] Send keys injects key press and release messages through the frame-synced input path
-- [ ] A keyboard-activated control in the example game responds, verified by a test
-- [ ] The wait-for-frame semantics match clicks
+- [x] Send keys injects key press and release messages through the frame-synced input path
+- [x] A keyboard-activated control in the example game responds, verified by a test
+- [x] The wait-for-frame semantics match clicks

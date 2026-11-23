@@ -24,6 +24,7 @@ function throwAgentError(r: StepResult): void {
     case 'no such element': throw new errors.NoSuchElementError(e.message);
     case 'element not interactable': throw new errors.ElementNotInteractableError(e.message);
     case 'unable to capture screen': throw new errors.UnableToCaptureScreen(e.message);
+    case 'invalid argument': throw new errors.InvalidArgumentError(e.message);
     case 'invalid selector': throw new errors.InvalidSelectorError(e.message);
     default: throw new errors.UnknownError(`${e.code}: ${e.message}`);
   }
@@ -99,6 +100,12 @@ export class BevyDriver extends BaseDriver<BevyConstraints> {
 
   async elementEnabled(elementId: string): Promise<boolean> {
     return (await this.getAttribute('enabled', elementId)) === 'true';
+  }
+
+  /** Send keys: the text is typed into the game (the game has no element focus concept here). */
+  async setValue(text: string | string[], elementId: string): Promise<void> {
+    const [r] = await this.client().run([{ keys: Array.isArray(text) ? text.join('') : text }]);
+    throwAgentError(r);
   }
 
   async getScreenshot(): Promise<string> {
